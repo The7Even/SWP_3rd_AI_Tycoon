@@ -1,12 +1,13 @@
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
-    QLabel, QFrame, QPushButton, QMessageBox
+    QLabel, QFrame, QPushButton
 )
 from PyQt6.QtCore import Qt, QTimer
 from core.game_state import GameState
 from core.number_format import format_number
 from ui.console_widget import VirtualConsoleWidget
 from ui.tree_widget import UpgradeTreeWidget
+from ui.news_dialog import NewsDialog
 
 
 class MainWindow(QMainWindow):
@@ -16,6 +17,8 @@ class MainWindow(QMainWindow):
         self.resize(1150, 720)
 
         self.game_state = GameState()
+        self.news_dialog = None
+
         self._init_ui()
         self._connect_signals()
 
@@ -24,7 +27,13 @@ class MainWindow(QMainWindow):
         self.passive_timer.timeout.connect(self._on_tick)
         self.passive_timer.start(100)
 
+        # 25초 주기 상시 랜덤 뉴스 발생 타이머 (계획서 2.2.3절)
+        self.news_timer = QTimer(self)
+        self.news_timer.timeout.connect(self.game_state.trigger_random_news)
+        self.news_timer.start(25000)
+
         self._update_ui()
+        self._refresh_mini_news()
 
     def _init_ui(self):
         central = QWidget()
@@ -96,9 +105,11 @@ class MainWindow(QMainWindow):
         news_header = QHBoxLayout()
         lbl_news_title = QLabel("NEWS")
         lbl_news_title.setStyleSheet("font-size: 15px; font-weight: bold; border: none;")
+
         btn_news_expand = QPushButton("↗")
-        btn_news_expand.setFixedSize(26, 24)
-        btn_news_expand.setToolTip("전체 뉴스 및 도감 보기 (구현 예정)")
+        btn_news_expand.setFixedSize(28, 24)
+        btn_news_expand.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_news_expand.setToolTip("전체 뉴스 / AI 활동 / 도감 열기")
         btn_news_expand.clicked.connect(self._show_news_popup)
 
         news_header.addWidget(lbl_news_title)
@@ -106,18 +117,8 @@ class MainWindow(QMainWindow):
         news_header.addWidget(btn_news_expand)
         news_layout.addLayout(news_header)
 
-        self.lbl_news_1 = QLabel("OO, 개인 개발 AI 최초 수능 1등급..")
-        self.lbl_news_1.setStyleSheet("""
-            background-color: #fae17d; border: 1px solid #9a6700;
-            border-radius: 4px; padding: 6px; font-size: 12px; font-weight: bold;
-        """)
-
-        self.lbl_news_2 = QLabel("InstantGram, AI 개발 우려 표명.. AI 산업 주춤")
-        self.lbl_news_2.setStyleSheet("""
-            background-color: #ff8182; border: 1px solid #cf222e;
-            border-radius: 4px; padding: 6px; font-size: 12px; font-weight: bold;
-        """)
-
+        self.lbl_news_1 = QLabel()
+        self.lbl_news_2 = QLabel()
         news_layout.addWidget(self.lbl_news_1)
         news_layout.addWidget(self.lbl_news_2)
         bottom_layout.addWidget(news_box, stretch=1)
@@ -156,14 +157,33 @@ class MainWindow(QMainWindow):
 
         self.tree_widget.refresh_tree()
 
-    def _on_news_added(self, title: str, news_type: str):
-        # 새 뉴스가 들어오면 기존 뉴스 1을 2로 밀어내고 상단에 표시
-        self.lbl_news_2.setText(self.lbl_news_1.text())
-        self.lbl_news_1.setText(title)
+    def _apply_mini_card_style(self, label: QLabel, news_item: dict):
+        color_schemes = {
+            "info": ("#fae17d", "#9a6700"),
+            "danger": ("#f28b96", "#a40e26"),
+            "story": ("#d99be6", "#6639ba")
+        }
+        bg, border = color_schemes.get(news_item.get("category", "info"), ("#fae17d", "#9a6700"))
+        label.setText(news_item["title"])
+        label.setStyleSheet(f"""
+            background-color: {bg}; border: 1px solid {border};
+            border-radius: 4px; padding: 6px; font-size: 12px; font-weight: bold;
+        """)
+
+    def _refresh_mini_news(self):
+        history = self.game_state.news_history
+        if len(history) >= 1:
+            self._apply_mini_card_style(self.lbl_news_1, history[0])
+        if len(history) >= 2:
+            self._apply_mini_card_style(self.lbl_news_2, history[1])
+
+    def _on_news_added(self, news_item: dict):
+        self._refresh_mini_news()
 
     def _show_news_popup(self):
-        QMessageBox.information(
-            self,
-            "전체 뉴스 / AI 활동 / 도감",
-            "계획서 3.2절의 확장 뉴스 & 도감 창이 이곳에 연결될 예정입니다."
-        )
+        if self.news_dialog is None:
+            self.news_dialog = NewsDialog(self.game_state, self)
+        self.news_dialog.refresh_all()
+        self.news_dialog.show()
+        self.news_dialog.raise_()
+        self.news_dialog.activateWindow()
