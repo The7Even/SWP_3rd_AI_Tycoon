@@ -1,3 +1,4 @@
+import copy
 import random
 from datetime import datetime, timedelta
 from PyQt6.QtCore import QObject, pyqtSignal
@@ -7,7 +8,6 @@ class GameState(QObject):
     state_changed = pyqtSignal()
     news_added = pyqtSignal(dict)  # 뉴스 딕셔너리 전체 전달
 
-    # 상시 랜덤 이벤트 풀 (계획서 2.2.3절)
     RANDOM_NEWS_POOL = [
         {
             "title": "InstantGram, AI 개발 우려 표명.. AI 산업 주춤",
@@ -31,15 +31,101 @@ class GameState(QObject):
         }
     ]
 
+    INITIAL_UPGRADES = [
+        {
+            "id": "init_script",
+            "row": 1, "col": 2,
+            "name": "기초 스크립트",
+            "type": "common",
+            "cost": 50,
+            "purchased": False,
+            "req": [],
+            "desc": "명령어당 토큰 +10"
+        },
+        {
+            "id": "tokenizer_opt",
+            "row": 2, "col": 2,
+            "name": "토크나이저",
+            "type": "common",
+            "cost": 150,
+            "purchased": False,
+            "req": ["init_script"],
+            "desc": "명령어당 토큰 +25, 쿨다운 감소"
+        },
+        {
+            "id": "act_prompt_eng",
+            "row": 3, "col": 1,
+            "name": "프롬프트 튜닝",
+            "type": "active",
+            "cost": 400,
+            "purchased": False,
+            "req": ["tokenizer_opt"],
+            "desc": "명령어당 토큰 2배 증가"
+        },
+        {
+            "id": "pas_gpu_buy",
+            "row": 3, "col": 3,
+            "name": "RTX 3060 영입",
+            "type": "passive",
+            "cost": 400,
+            "purchased": False,
+            "req": ["tokenizer_opt"],
+            "desc": "초당 토큰 +20, GPU 업그레이드"
+        },
+        {
+            "id": "act_macro_v1",
+            "row": 4, "col": 1,
+            "name": "단축키 매크로",
+            "type": "active",
+            "cost": 800,
+            "purchased": False,
+            "req": ["act_prompt_eng"],
+            "desc": "입력 쿨다운 50ms로 단축"
+        },
+        {
+            "id": "pas_vram_expand",
+            "row": 4, "col": 3,
+            "name": "듀얼 GPU 구성",
+            "type": "passive",
+            "cost": 800,
+            "purchased": False,
+            "req": ["pas_gpu_buy"],
+            "desc": "초당 토큰 +45"
+        },
+        {
+            "id": "pre_milestone_sync",
+            "row": 5, "col": 2,
+            "name": "모델 가중치 병합",
+            "type": "common",
+            "cost": 1500,
+            "purchased": False,
+            "req": ["act_macro_v1", "pas_vram_expand"],
+            "desc": "전체 토큰 생산 효율 1.5배"
+        },
+        {
+            "id": "milestone_1",
+            "row": 6, "col": 2,
+            "name": "소형 LLM 배포",
+            "type": "story",
+            "cost": 3000,
+            "purchased": False,
+            "req": ["pre_milestone_sync"],
+            "desc": "[마일스톤] 상용 API 서비스 개시"
+        }
+    ]
+
     def __init__(self):
         super().__init__()
+        self.reset_state(emit_signal=False)
+
+    def reset_state(self, emit_signal: bool = True):
+        """게임 상태를 초기값으로 리셋"""
         self.tokens: float = 0.0
         self.tokens_per_command: float = 24.0
         self.tokens_per_sec: float = 6.0
         self.input_cooldown_ms: int = 200
         self.virtual_day_offset: int = 0
 
-        # 초기 하드웨어 스펙
         self.specs = {
             "CPU": "Intel i5-12400F (로컬 테스트용)",
             "GPU": "내장 그래픽",
@@ -48,7 +134,6 @@ class GameState(QObject):
             "BENCH_SCORE": 120.0
         }
 
-        # 뉴스 히스토리 (최신순 저장)
         self.news_history = [
             {
                 "title": "1인 개발 AI, 최초 공개 후 커뮤니티 화제...",
@@ -64,14 +149,12 @@ class GameState(QObject):
             }
         ]
 
-        # AI 활동 로그 (패시브 수급 및 자동화 활동 내역)
         self.ai_activities = [
             {"name": "로컬 백그라운드 토큰 마이닝", "rate": "6 Tk/s", "status": "가동 중"},
             {"name": "유료 API 베타 테스터 응답", "rate": "잠김 (소형 LLM 배포 후 해금)", "status": "대기"},
             {"name": "자율 데이터 크롤링 및 정제 파이프라인", "rate": "잠김 (상용 서비스 후 해금)", "status": "대기"}
         ]
 
-        # 도감 요소 (계획서 2.2.3절: 모든 수집 요소 완성 시 히든 엔딩 조건 충족)
         self.encyclopedia = [
             {"id": "col_hello_world", "name": "첫 번째 프롬프트", "desc": "로컬 환경에서 AI의 첫 응답을 받아냈다.", "unlocked": True},
             {"id": "col_rtx3060", "name": "가성비의 제왕 RTX 3060", "desc": "중고 그래픽카드를 영입해 본격적인 병렬 연산을 시작했다.", "unlocked": False},
@@ -79,89 +162,59 @@ class GameState(QObject):
             {"id": "col_agi_spark", "name": "자아의 불꽃", "desc": "AI가 스스로 코드를 수정하기 시작한 흔적을 발견했다.", "unlocked": False}
         ]
 
-        # 업그레이드 트리 노드
-        self.upgrades = [
-            {
-                "id": "init_script",
-                "row": 1, "col": 2,
-                "name": "기초 스크립트",
-                "type": "common",
-                "cost": 50,
-                "purchased": False,
-                "req": [],
-                "desc": "명령어당 토큰 +10"
-            },
-            {
-                "id": "tokenizer_opt",
-                "row": 2, "col": 2,
-                "name": "토크나이저",
-                "type": "common",
-                "cost": 150,
-                "purchased": False,
-                "req": ["init_script"],
-                "desc": "명령어당 토큰 +25, 쿨다운 감소"
-            },
-            {
-                "id": "act_prompt_eng",
-                "row": 3, "col": 1,
-                "name": "프롬프트 튜닝",
-                "type": "active",
-                "cost": 400,
-                "purchased": False,
-                "req": ["tokenizer_opt"],
-                "desc": "명령어당 토큰 2배 증가"
-            },
-            {
-                "id": "pas_gpu_buy",
-                "row": 3, "col": 3,
-                "name": "RTX 3060 영입",
-                "type": "passive",
-                "cost": 400,
-                "purchased": False,
-                "req": ["tokenizer_opt"],
-                "desc": "초당 토큰 +20, GPU 업그레이드"
-            },
-            {
-                "id": "act_macro_v1",
-                "row": 4, "col": 1,
-                "name": "단축키 매크로",
-                "type": "active",
-                "cost": 800,
-                "purchased": False,
-                "req": ["act_prompt_eng"],
-                "desc": "입력 쿨다운 50ms로 단축"
-            },
-            {
-                "id": "pas_vram_expand",
-                "row": 4, "col": 3,
-                "name": "듀얼 GPU 구성",
-                "type": "passive",
-                "cost": 800,
-                "purchased": False,
-                "req": ["pas_gpu_buy"],
-                "desc": "초당 토큰 +45"
-            },
-            {
-                "id": "pre_milestone_sync",
-                "row": 5, "col": 2,
-                "name": "모델 가중치 병합",
-                "type": "common",
-                "cost": 1500,
-                "purchased": False,
-                "req": ["act_macro_v1", "pas_vram_expand"],
-                "desc": "전체 토큰 생산 효율 1.5배"
-            },
-            {
-                "id": "milestone_1",
-                "row": 6, "col": 2,
-                "name": "소형 LLM 배포",
-                "type": "story",
-                "cost": 3000,
-                "purchased": False,
-                "req": ["pre_milestone_sync"],
-                "desc": "[마일스톤] 상용 API 서비스 개시"
-            }
-        ]
+        self.upgrades = copy.deepcopy(self.INITIAL_UPGRADES)
+
+        if emit_signal:
+            self.state_changed.emit()
+            if self.news_history:
+                self.news_added.emit(self.news_history[0])
+
+    def to_dict(self) -> dict:
+        """현재 상태를 저장 가능한 딕셔너리로 직렬화"""
+        return {
+            "version": 1,
+            "tokens": self.tokens,
+            "tokens_per_command": self.tokens_per_command,
+            "tokens_per_sec": self.tokens_per_sec,
+            "input_cooldown_ms": self.input_cooldown_ms,
+            "virtual_day_offset": self.virtual_day_offset,
+            "specs": copy.deepcopy(self.specs),
+            "purchased_upgrades": [u["id"] for u in self.upgrades if u["purchased"]],
+            "unlocked_encyclopedia": [d["id"] for d in self.encyclopedia if d["unlocked"]],
+            "ai_activities": copy.deepcopy(self.ai_activities),
+            "news_history": copy.deepcopy(self.news_history)
+        }
+
+    def from_dict(self, data: dict):
+        """저장된 딕셔너리 데이터를 현재 상태에 복원"""
+        self.reset_state(emit_signal=False)
+
+        self.tokens = float(data.get("tokens", 0.0))
+        self.tokens_per_command = float(data.get("tokens_per_command", 24.0))
+        self.tokens_per_sec = float(data.get("tokens_per_sec", 6.0))
+        self.input_cooldown_ms = int(data.get("input_cooldown_ms", 200))
+        self.virtual_day_offset = int(data.get("virtual_day_offset", 0))
+
+        if isinstance(data.get("specs"), dict):
+            self.specs.update(data["specs"])
+
+        purchased_ids = set(data.get("purchased_upgrades", []))
+        for u in self.upgrades:
+            u["purchased"] = (u["id"] in purchased_ids)
+
+        unlocked_dex_ids = set(data.get("unlocked_encyclopedia", ["col_hello_world"]))
+        for d in self.encyclopedia:
+            d["unlocked"] = (d["id"] in unlocked_dex_ids)
+
+        if isinstance(data.get("ai_activities"), list):
+            self.ai_activities = copy.deepcopy(data["ai_activities"])
+
+        if isinstance(data.get("news_history"), list) and len(data["news_history"]) > 0:
+            self.news_history = copy.deepcopy(data["news_history"])
+
+        self.state_changed.emit()
+        if self.news_history:
+            self.news_added.emit(self.news_history[0])
 
     def _get_current_game_date(self) -> str:
         base_date = datetime(2026, 11, 5) + timedelta(days=self.virtual_day_offset)

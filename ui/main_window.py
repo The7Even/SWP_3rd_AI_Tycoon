@@ -1,9 +1,10 @@
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
-    QLabel, QFrame, QPushButton
+    QLabel, QFrame, QPushButton, QMessageBox, QFileDialog
 )
 from PyQt6.QtCore import Qt, QTimer
 from core.game_state import GameState
+from core.save_manager import SaveManager
 from core.number_format import format_number
 from ui.console_widget import VirtualConsoleWidget
 from ui.tree_widget import UpgradeTreeWidget
@@ -17,23 +18,73 @@ class MainWindow(QMainWindow):
         self.resize(1150, 720)
 
         self.game_state = GameState()
+        self.save_manager = SaveManager()
         self.news_dialog = None
 
         self._init_ui()
         self._connect_signals()
+
+        # 시작 시 기존 세이브 파일 로드 및 손상/백업 예외 처리 (계획서 2.5.3절)
+        self._load_initial_save()
 
         # 0.1초(100ms) 주기 패시브 토큰 수급 타이머
         self.passive_timer = QTimer(self)
         self.passive_timer.timeout.connect(self._on_tick)
         self.passive_timer.start(100)
 
-        # 25초 주기 상시 랜덤 뉴스 발생 타이머 (계획서 2.2.3절)
+        # 25초 주기 상시 랜덤 뉴스 발생 타이머
         self.news_timer = QTimer(self)
         self.news_timer.timeout.connect(self.game_state.trigger_random_news)
         self.news_timer.start(25000)
 
+        # 30초 주기 자동 저장 및 백업 타이머 (계획서 2.2.4절)
+        self.autosave_timer = QTimer(self)
+        self.autosave_timer.timeout.connect(self._on_autosave_tick)
+        self.autosave_timer.start(30000)
+
         self._update_ui()
         self._refresh_mini_news()
+
+    def _load_initial_save(self):
+        status, data = self.save_manager.load_auto()
+        if status == "SUCCESS" and data:
+            self.game_state.from_dict(data)
+        elif status == "RECOVERED_FROM_BACKUP" and data:
+            self.game_state.from_dict(data)
+            QMessageBox.information(
+                self,
+                "세이브 데이터 자동 복구",
+                "기본 세이브 파일의 손상이 감지되어 백업 파일(.bak)로부터 진행 상황을 안전하게 복구했습니다."
+            )
+        elif status == "CORRUPTED_ALL":
+            QMessageBox.warning(
+                self,
+                "세이브 데이터 손상 안내",
+                "세이브 파일과 백업 파일이 모두 손상되어 데이터를 복구할 수 없습니다.\n새로운 게임 상태로 초기화하여 시작합니다."
+            )
+            self.save_manager.clear_all_saves()
+            self.game_state.reset_state(emit_signal=False)
+
+    def _on_autosave_tick(self):
+        ok, msg = self.save_manager.save_auto(self.game_state.to_dict())
+        if not ok and msg == "PERMISSION_ERROR":
+            self.autosave_timer.stop()
+            reply = QMessageBox.warning(
+                self,
+                "자동 저장 권한 오류",
+                "현재 저장 경로에 쓰기 권한이 부족합니다. 새 저장 경로를 지정하시겠습니까?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            if reply == QMessageBox.StandardButton.Yes:
+                new_dir = QFileDialog.getExistingDirectory(self, "새 세이브 저장 폴더 선택")
+                if new_dir and self.save_manager.set_save_directory(new_dir):
+                    self.save_manager.save_auto(self.game_state.to_dict())
+                    self.autosave_timer.start(30000)
+
+    def closeEvent(self, event):
+        """프로그램 종료 시 자동 저장 수행"""
+        self.save_manager.save_auto(self.game_state.to_dict())
+        event.accept()
 
     def _init_ui(self):
         central = QWidget()
@@ -109,7 +160,7 @@ class MainWindow(QMainWindow):
         btn_news_expand = QPushButton("↗")
         btn_news_expand.setFixedSize(28, 24)
         btn_news_expand.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_news_expand.setToolTip("전체 뉴스 / AI 활동 / 도감 열기")
+        btn_news_expand.setToolTip("전체 뉴스 / AI 활동 / 도감 / 설정 열기")
         btn_news_expand.clicked.connect(self._show_news_popup)
 
         news_header.addWidget(lbl_news_title)
@@ -182,7 +233,7 @@ class MainWindow(QMainWindow):
 
     def _show_news_popup(self):
         if self.news_dialog is None:
-            self.news_dialog = NewsDialog(self.game_state, self)
+            self.news_dialog = NewsDialog(self.game_state, self.save_manager, self)
         self.news_dialog.refresh_all()
         self.news_dialog.show()
         self.news_dialog.raise_()

@@ -1,8 +1,10 @@
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel,
-    QPushButton, QScrollArea, QWidget, QFrame, QStackedWidget
+    QPushButton, QScrollArea, QWidget, QFrame, QStackedWidget,
+    QTextEdit, QMessageBox, QFileDialog, QApplication
 )
 from PyQt6.QtCore import Qt
+import os
 
 
 class NewsCardWidget(QFrame):
@@ -30,7 +32,6 @@ class NewsCardWidget(QFrame):
         layout.setContentsMargins(14, 10, 14, 12)
         layout.setSpacing(6)
 
-        # 상단: 제목 + 우측 날짜
         header_row = QHBoxLayout()
         lbl_title = QLabel(news_item["title"])
         lbl_title.setStyleSheet("""
@@ -55,13 +56,11 @@ class NewsCardWidget(QFrame):
         header_row.addWidget(lbl_date)
         layout.addLayout(header_row)
 
-        # 중간 구분 실선
         line = QFrame()
         line.setFrameShape(QFrame.Shape.HLine)
         line.setStyleSheet(f"background-color: {border_color}; max-height: 1px; border: none;")
         layout.addWidget(line)
 
-        # 하단 뉴스 본문
         lbl_content = QLabel(news_item["content"])
         lbl_content.setWordWrap(True)
         lbl_content.setStyleSheet("""
@@ -75,13 +74,14 @@ class NewsCardWidget(QFrame):
 
 
 class NewsDialog(QDialog):
-    """계획서 3.2절 확장 팝업창 (최근 뉴스 / AI 활동 / 도감 탭 전환 지원)"""
+    """계획서 3.2절 확장 팝업창 (최근 뉴스 / AI 활동 / 도감 / 설정 4단 탭 지원)"""
 
-    def __init__(self, game_state, parent=None):
+    def __init__(self, game_state, save_manager, parent=None):
         super().__init__(parent)
         self.game_state = game_state
-        self.setWindowTitle("AI 키우기 - 뉴스 및 도감")
-        self.resize(760, 520)
+        self.save_manager = save_manager
+        self.setWindowTitle("AI 키우기 - 뉴스 / 도감 / 설정")
+        self.resize(780, 560)
         self.setStyleSheet("QDialog { background-color: #ffffff; }")
 
         self._init_ui()
@@ -93,7 +93,7 @@ class NewsDialog(QDialog):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
-        # 1. 상단 헤더 바 (NEWS)
+        # 1. 상단 헤더 바
         header = QFrame()
         header.setFixedHeight(48)
         header.setStyleSheet("background-color: #ffffff; border-bottom: 2px solid #1f2328;")
@@ -118,7 +118,7 @@ class NewsDialog(QDialog):
         header_layout.addWidget(btn_close)
         main_layout.addWidget(header)
 
-        # 2. 중앙 콘텐츠 스택 (0: 최근 뉴스, 1: AI 활동, 2: 도감)
+        # 2. 중앙 콘텐츠 스택 (0: 최근 뉴스, 1: AI 활동, 2: 도감, 3: 설정)
         self.stack = QStackedWidget()
 
         # [탭 0] 최근 뉴스 스크롤 영역
@@ -160,9 +160,17 @@ class NewsDialog(QDialog):
         self.dex_scroll.setWidget(self.dex_container)
         self.stack.addWidget(self.dex_scroll)
 
+        # [탭 3] 설정 & 데이터 백업/분기 관리 스크롤 영역
+        self.settings_scroll = QScrollArea()
+        self.settings_scroll.setWidgetResizable(True)
+        self.settings_scroll.setStyleSheet("border: none; background-color: #ffffff;")
+        self.settings_container = self._build_settings_tab()
+        self.settings_scroll.setWidget(self.settings_container)
+        self.stack.addWidget(self.settings_scroll)
+
         main_layout.addWidget(self.stack, stretch=1)
 
-        # 3. 하단 탭 바 (계획서 3.2절: 최근 뉴스 | AI 활동 | 도감)
+        # 3. 하단 4단 탭 바 (최근 뉴스 | AI 활동 | 도감 | 설정)
         bottom_bar = QFrame()
         bottom_bar.setFixedHeight(46)
         bottom_bar.setStyleSheet("background-color: #ffffff; border-top: 2px solid #1f2328;")
@@ -171,7 +179,7 @@ class NewsDialog(QDialog):
         bottom_layout.setSpacing(0)
 
         self.tab_buttons = []
-        tab_names = ["최근 뉴스", "AI 활동", "도감"]
+        tab_names = ["최근 뉴스", "AI 활동", "도감", "설정"]
         for idx, name in enumerate(tab_names):
             btn = QPushButton(name)
             btn.setFixedHeight(44)
@@ -186,13 +194,267 @@ class NewsDialog(QDialog):
 
         self._switch_tab(0)
 
+    def _build_settings_tab(self) -> QWidget:
+        """설정 탭 UI 구성 (자동/백업 저장, 분기 슬롯, Base64 내보내기/불러오기, 초기화)"""
+        container = QWidget()
+        container.setStyleSheet("background-color: #ffffff;")
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(18, 16, 18, 20)
+        layout.setSpacing(14)
+        layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+
+        card_style = """
+            QFrame {
+                background-color: #f6f8fa;
+                border: 1px solid #d0d7de;
+                border-radius: 6px;
+                padding: 12px;
+            }
+        """
+        btn_primary_style = """
+            QPushButton {
+                background-color: #0969da; color: #ffffff;
+                border: none; border-radius: 4px;
+                padding: 6px 12px; font-weight: bold; font-size: 12px;
+            }
+            QPushButton:hover { background-color: #0860ca; }
+        """
+        btn_normal_style = """
+            QPushButton {
+                background-color: #ffffff; color: #1f2328;
+                border: 1px solid #d0d7de; border-radius: 4px;
+                padding: 6px 12px; font-weight: bold; font-size: 12px;
+            }
+            QPushButton:hover { background-color: #eaeef2; }
+        """
+
+        # 1. 자동 저장 및 백업 관리 섹션
+        sec_auto = QFrame()
+        sec_auto.setStyleSheet(card_style)
+        auto_layout = QVBoxLayout(sec_auto)
+        auto_layout.setSpacing(8)
+
+        lbl_auto_title = QLabel("1. 데이터 영속성 및 자동 백업 관리")
+        lbl_auto_title.setStyleSheet("background-color: transparent; font-size: 14px; font-weight: bold; border: none;")
+        self.lbl_save_status = QLabel("상태: 30초마다 자동 저장 및 직전 백업본(.bak) 생성 활성")
+        self.lbl_save_status.setStyleSheet("background-color: transparent; font-size: 12px; color: #424a53; border: none;")
+
+        auto_btn_row = QHBoxLayout()
+        btn_manual_save = QPushButton("지금 즉시 저장 및 백업")
+        btn_manual_save.setStyleSheet(btn_primary_style)
+        btn_manual_save.clicked.connect(self._on_manual_save)
+
+        btn_change_dir = QPushButton("저장 경로 변경")
+        btn_change_dir.setStyleSheet(btn_normal_style)
+        btn_change_dir.clicked.connect(self._on_change_save_dir)
+
+        auto_btn_row.addWidget(btn_manual_save)
+        auto_btn_row.addWidget(btn_change_dir)
+        auto_btn_row.addStretch()
+
+        auto_layout.addWidget(lbl_auto_title)
+        auto_layout.addWidget(self.lbl_save_status)
+        auto_layout.addLayout(auto_btn_row)
+        layout.addWidget(sec_auto)
+
+        # 2. 분기 저장 슬롯 섹션 (계획서 2.2.4절: 엔딩 분기 회귀용 체크포인트)
+        sec_branch = QFrame()
+        sec_branch.setStyleSheet(card_style)
+        branch_layout = QVBoxLayout(sec_branch)
+        branch_layout.setSpacing(8)
+
+        lbl_branch_title = QLabel("2. 분기 저장 슬롯 (엔딩 분기 되돌리기용 체크포인트)")
+        lbl_branch_title.setStyleSheet("background-color: transparent; font-size: 14px; font-weight: bold; border: none;")
+        branch_layout.addWidget(lbl_branch_title)
+
+        self.branch_info_labels = {}
+        for slot in (1, 2, 3):
+            row = QHBoxLayout()
+            lbl_slot = QLabel(f"슬롯 {slot}: 비어 있음")
+            lbl_slot.setStyleSheet("background-color: transparent; font-size: 12px; color: #1f2328; border: none;")
+            self.branch_info_labels[slot] = lbl_slot
+
+            btn_b_save = QPushButton("분기 저장")
+            btn_b_save.setStyleSheet(btn_normal_style)
+            btn_b_save.clicked.connect(lambda checked, s=slot: self._on_branch_save(s))
+
+            btn_b_load = QPushButton("불러오기")
+            btn_b_load.setStyleSheet(btn_primary_style)
+            btn_b_load.clicked.connect(lambda checked, s=slot: self._on_branch_load(s))
+
+            row.addWidget(lbl_slot, stretch=1)
+            row.addWidget(btn_b_save)
+            row.addWidget(btn_b_load)
+            branch_layout.addLayout(row)
+
+        layout.addWidget(sec_branch)
+
+        # 3. Base64 사용자 전달용 세이브 코드 섹션 (계획서 3.5절)
+        sec_b64 = QFrame()
+        sec_b64.setStyleSheet(card_style)
+        b64_layout = QVBoxLayout(sec_b64)
+        b64_layout.setSpacing(8)
+
+        lbl_b64_title = QLabel("3. Base64 세이브 코드 내보내기 / 불러오기")
+        lbl_b64_title.setStyleSheet("background-color: transparent; font-size: 14px; font-weight: bold; border: none;")
+        b64_layout.addWidget(lbl_b64_title)
+
+        self.txt_b64 = QTextEdit()
+        self.txt_b64.setFixedHeight(68)
+        self.txt_b64.setPlaceholderText("이곳에 Base64 세이브 코드가 생성되거나, 불러올 코드를 붙여넣으세요.")
+        self.txt_b64.setStyleSheet("""
+            QTextEdit {
+                background-color: #ffffff;
+                border: 1px solid #d0d7de;
+                border-radius: 4px;
+                font-family: Consolas, monospace;
+                font-size: 11px;
+                padding: 4px;
+            }
+        """)
+        b64_layout.addWidget(self.txt_b64)
+
+        b64_btn_row = QHBoxLayout()
+        btn_export_b64 = QPushButton("현재 데이터 코드 생성 및 복사")
+        btn_export_b64.setStyleSheet(btn_normal_style)
+        btn_export_b64.clicked.connect(self._on_export_base64)
+
+        btn_import_b64 = QPushButton("입력된 코드로 데이터 복원")
+        btn_import_b64.setStyleSheet(btn_primary_style)
+        btn_import_b64.clicked.connect(self._on_import_base64)
+
+        b64_btn_row.addWidget(btn_export_b64)
+        b64_btn_row.addWidget(btn_import_b64)
+        b64_btn_row.addStretch()
+        b64_layout.addLayout(b64_btn_row)
+
+        layout.addWidget(sec_b64)
+
+        # 4. 위험 구역: 전체 데이터 초기화
+        sec_reset = QFrame()
+        sec_reset.setStyleSheet("""
+            QFrame {
+                background-color: #ffebe9;
+                border: 1px solid #ff8182;
+                border-radius: 6px;
+                padding: 12px;
+            }
+        """)
+        reset_layout = QHBoxLayout(sec_reset)
+        lbl_reset = QLabel("게임 진행 데이터 전체 초기화 (자동 저장 및 백업본 포함)")
+        lbl_reset.setStyleSheet("background-color: transparent; font-size: 13px; font-weight: bold; color: #cf222e; border: none;")
+
+        btn_reset = QPushButton("데이터 초기화")
+        btn_reset.setStyleSheet("""
+            QPushButton {
+                background-color: #cf222e; color: #ffffff;
+                border: none; border-radius: 4px;
+                padding: 6px 14px; font-weight: bold; font-size: 12px;
+            }
+            QPushButton:hover { background-color: #a40e26; }
+        """)
+        btn_reset.clicked.connect(self._on_reset_game)
+
+        reset_layout.addWidget(lbl_reset)
+        reset_layout.addStretch()
+        reset_layout.addWidget(btn_reset)
+        layout.addWidget(sec_reset)
+
+        return container
+
+    def _on_manual_save(self):
+        ok, msg = self.save_manager.save_auto(self.game_state.to_dict())
+        if ok:
+            self.lbl_save_status.setText(f"상태: {msg} (경로: {self.save_manager.save_dir})")
+            QMessageBox.information(self, "저장 완료", f"{msg}\n기존 세이브 데이터는 백업본(.bak)으로 안전하게 보관되었습니다.")
+        elif msg == "PERMISSION_ERROR":
+            self._handle_permission_error()
+        else:
+            QMessageBox.warning(self, "저장 오류", msg)
+
+    def _on_change_save_dir(self):
+        selected_dir = QFileDialog.getExistingDirectory(self, "세이브 데이터를 저장할 폴더 선택")
+        if selected_dir:
+            if self.save_manager.set_save_directory(selected_dir):
+                self._on_manual_save()
+            else:
+                QMessageBox.critical(self, "권한 오류", "선택한 폴더에도 쓰기 권한이 없습니다. 다른 경로를 선택해 주세요.")
+
+    def _handle_permission_error(self):
+        reply = QMessageBox.warning(
+            self,
+            "저장 경로 쓰기 권한 부족",
+            "현재 세이브 폴더에 쓰기 권한이 없어 저장할 수 없습니다.\n새 저장 경로를 선택하시겠습니까?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            self._on_change_save_dir()
+
+    def _on_branch_save(self, slot: int):
+        ok, msg = self.save_manager.save_branch(slot, self.game_state.to_dict())
+        if ok:
+            self.refresh_settings()
+            QMessageBox.information(self, "분기 저장 완료", msg)
+        elif msg == "PERMISSION_ERROR":
+            self._handle_permission_error()
+        else:
+            QMessageBox.warning(self, "분기 저장 오류", msg)
+
+    def _on_branch_load(self, slot: int):
+        reply = QMessageBox.question(
+            self,
+            "분기 불러오기 확인",
+            f"슬롯 {slot} 시점으로 되돌아가시겠습니까?\n저장하지 않은 현재 진행 상황은 덮어씌워집니다.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            ok, result = self.save_manager.load_branch(slot)
+            if ok and isinstance(result, dict):
+                self.game_state.from_dict(result)
+                self.refresh_all()
+                QMessageBox.information(self, "분기 복원 완료", f"슬롯 {slot} 시점으로 성공적으로 복원되었습니다.")
+            else:
+                QMessageBox.warning(self, "불러오기 실패", str(result))
+
+    def _on_export_base64(self):
+        code = self.save_manager.export_base64(self.game_state.to_dict())
+        self.txt_b64.setPlainText(code)
+        clipboard = QApplication.clipboard()
+        if clipboard:
+            clipboard.setText(code)
+        QMessageBox.information(self, "코드 생성 완료", "현재 세이브 데이터의 Base64 코드가 생성되어 클립보드에 복사되었습니다.")
+
+    def _on_import_base64(self):
+        raw_code = self.txt_b64.toPlainText()
+        ok, result = self.save_manager.import_base64(raw_code)
+        if ok and isinstance(result, dict):
+            self.game_state.from_dict(result)
+            self.save_manager.save_auto(self.game_state.to_dict())
+            self.refresh_all()
+            QMessageBox.information(self, "복원 완료", "Base64 코드로부터 게임 데이터를 성공적으로 불러왔습니다.")
+        else:
+            QMessageBox.warning(self, "코드 검증 실패", str(result))
+
+    def _on_reset_game(self):
+        reply = QMessageBox.warning(
+            self,
+            "전체 데이터 초기화",
+            "정말로 모든 진행 상황과 자동 저장/백업 파일을 초기화하시겠습니까?\n(분기 저장 슬롯은 유지됩니다.)",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            self.save_manager.clear_all_saves()
+            self.game_state.reset_state(emit_signal=True)
+            self.refresh_all()
+            QMessageBox.information(self, "초기화 완료", "모든 진행 데이터가 초기화되었습니다.")
+
     def _connect_signals(self):
         self.game_state.news_added.connect(lambda _: self.refresh_news())
         self.game_state.state_changed.connect(self.refresh_activities_and_dex)
 
     def _switch_tab(self, index: int):
         self.stack.setCurrentIndex(index)
-        titles = ["NEWS", "AI ACTIVITY", "ENCYCLOPEDIA (도감)"]
+        titles = ["NEWS", "AI ACTIVITY", "ENCYCLOPEDIA (도감)", "SETTINGS (설정 및 백업)"]
         self.lbl_header_title.setText(titles[index])
 
         for i, btn in enumerate(self.tab_buttons):
@@ -224,6 +486,15 @@ class NewsDialog(QDialog):
     def refresh_all(self):
         self.refresh_news()
         self.refresh_activities_and_dex()
+        self.refresh_settings()
+
+    def refresh_settings(self):
+        self.lbl_save_status.setText(
+            f"최근 저장: {self.save_manager.last_saved_time} | 저장 경로: {os.path.abspath(self.save_manager.save_dir)}"
+            if hasattr(self, "lbl_save_status") else ""
+        )
+        for slot, lbl in self.branch_info_labels.items():
+            lbl.setText(f"슬롯 {slot}: {self.save_manager.get_branch_info(slot)}")
 
     def _clear_layout(self, layout):
         while layout.count():
@@ -238,7 +509,6 @@ class NewsDialog(QDialog):
             self.news_list_layout.addWidget(card)
 
     def refresh_activities_and_dex(self):
-        # AI 활동 갱신
         self._clear_layout(self.activity_layout)
         for act in self.game_state.ai_activities:
             box = QFrame()
@@ -261,7 +531,6 @@ class NewsDialog(QDialog):
             row.addWidget(lbl_rate)
             self.activity_layout.addWidget(box)
 
-        # 도감 갱신
         self._clear_layout(self.dex_layout)
         unlocked_cnt = sum(1 for d in self.game_state.encyclopedia if d["unlocked"])
         total_cnt = len(self.game_state.encyclopedia)
