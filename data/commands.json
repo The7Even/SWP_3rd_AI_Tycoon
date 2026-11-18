@@ -1,0 +1,330 @@
+{
+  "1": [
+    {
+      "cmd": "print([x**2 for x in range(1, 6)])",
+      "out": "[STDOUT] [1, 4, 9, 16, 25] - 기초 텐서 연산 검증 완료"
+    },
+    {
+      "cmd": "import torch; torch.cuda.is_available()",
+      "out": "[RUNTIME] 디바이스 체크 완료 (Local Compute Backend)"
+    },
+    {
+      "cmd": "model.train(epochs=10, lr=0.001)",
+      "out": "[TRAIN] Epoch 10/10 완료 - 손실률(Loss): 0.418"
+    },
+    {
+      "cmd": "def attention(q, k, v): return q @ k.T",
+      "out": "[COMPILE] 셀프 어텐션 행렬 곱 함수 정의됨"
+    },
+    {
+      "cmd": "optimizer.zero_grad(); loss.backward()",
+      "out": "[GRAD] 역전파 기울기 계산 및 버퍼 초기화 완료"
+    },
+    {
+      "cmd": "tensor = torch.randn((32, 128), dtype=float)",
+      "out": "[ALLOC] 32x128 부동소수점 랜덤 텐서 메모리 할당됨"
+    },
+    {
+      "cmd": "with open('corpus.txt', 'r') as f: data = f.read()",
+      "out": "[IO] 로컬 텍스트 말뭉치 데이터셋 14.2MB 로드 완료"
+    },
+    {
+      "cmd": "logits = linear_layer(hidden_states)",
+      "out": "[FORWARD] 선형 출력층 로짓 벡터 산출 완료"
+    },
+    {
+      "cmd": "probs = torch.softmax(logits, dim=-1)",
+      "out": "[MATH] 마지막 차원 기준 소프트맥스 확률 정규화 완료"
+    },
+    {
+      "cmd": "loss_fn = nn.CrossEntropyLoss()",
+      "out": "[INIT] 다중 클래스 교차 엔트로피 손실 함수 바인딩"
+    },
+    {
+      "cmd": "for step, batch in enumerate(dataloader):",
+      "out": "[LOOP] 미니배치 데이터 로더 이터레이션 시작"
+    },
+    {
+      "cmd": "torch.nn.utils.clip_grad_norm_(params, 1.0)",
+      "out": "[STABLE] 기울기 폭발 방지를 위한 L2 노름 클리핑 적용"
+    },
+    {
+      "cmd": "torch.save(model.state_dict(), 'ckpt.pt')",
+      "out": "[DISK] 로컬 디스크에 가중치 체크포인트 저장 완료"
+    },
+    {
+      "cmd": "vocab = sorted(list(set(raw_text)))",
+      "out": "[VOCAB] 고유 문자 집합 추출 완료 (어휘 크기: 4,096)"
+    },
+    {
+      "cmd": "emb = nn.Embedding(num_embeddings=4096, dim=256)",
+      "out": "[LAYER] 256차원 토큰 임베딩 룩업 테이블 생성"
+    },
+    {
+      "cmd": "mask = torch.tril(torch.ones(seq_len, seq_len))",
+      "out": "[MASK] 자기회귀 디코딩용 하삼각 어텐션 마스크 생성"
+    },
+    {
+      "cmd": "scheduler = CosineAnnealingLR(optimizer, T_max=50)",
+      "out": "[LR] 코사인 어닐링 학습률 스케줄러 등록됨"
+    },
+    {
+      "cmd": "acc = (preds == labels).float().mean().item()",
+      "out": "[METRIC] 현재 배치 검증 정확도 측정 완료"
+    },
+    {
+      "cmd": "gc.collect(); torch.cuda.empty_cache()",
+      "out": "[MEM] 미사용 가비지 컬렉션 및 캐시 메모리 회수"
+    },
+    {
+      "cmd": "layer_norm = nn.LayerNorm(normalized_shape=256)",
+      "out": "[NORM] 히든 스테이트 레이어 정규화 모듈 초기화"
+    }
+  ],
+  "2": [
+    {
+      "cmd": "model.fit(batch_size=64)",
+      "out": "[BATCH] 미니배치 64단위 병렬 학습 처리 완료"
+    },
+    {
+      "cmd": "torch.compile(net)",
+      "out": "[JIT] 연산 그래프 최적화 완료 (추론 속도 +35%)"
+    },
+    {
+      "cmd": "tokenizer.encode_batch()",
+      "out": "[NLP] 서브워드 토크나이징 파이프라인 가속됨"
+    },
+    {
+      "cmd": "quantize_int8(weights)",
+      "out": "[MEM] 8비트 양자화 적용 - VRAM 점유율 48% 절감"
+    },
+    {
+      "cmd": "eval_benchmark(mmlu)",
+      "out": "[BENCH] MMLU 추론 벤치마크 평가 점수 갱신"
+    },
+    {
+      "cmd": "enable_flash_attn(v2)",
+      "out": "[KERNEL] FlashAttention-2 메모리 효율 커널 활성화"
+    },
+    {
+      "cmd": "train_bpe_vocab(32000)",
+      "out": "[TOKEN] 32K 바이트 페어 인코딩 사전 구축 완료"
+    },
+    {
+      "cmd": "apply_lora_adapter(r=16)",
+      "out": "[PEFT] Rank-16 저차원 적응(LoRA) 레이어 병합됨"
+    },
+    {
+      "cmd": "cache_kv_states(max=4096)",
+      "out": "[CACHE] 추론용 Key-Value 캐시 버퍼 사전 할당"
+    },
+    {
+      "cmd": "run_rlhf_reward(batch)",
+      "out": "[ALIGN] 인간 피드백 보상 모델 점수 반영 완료"
+    },
+    {
+      "cmd": "filter_toxic_samples()",
+      "out": "[DATA] 저품질 및 중복 데이터 12.4% 자동 정제됨"
+    },
+    {
+      "cmd": "mix_precision_fp16()",
+      "out": "[AMP] FP16 혼합 정밀도 연산 가속 모드 전환"
+    },
+    {
+      "cmd": "export_onnx_graph()",
+      "out": "[EXPORT] 범용 ONNX 추론 연산 그래프 직렬화 완료"
+    },
+    {
+      "cmd": "tune_top_p(p=0.92)",
+      "out": "[SAMPLE] 뉴클리어스 샘플링 임계값 최적화 완료"
+    },
+    {
+      "cmd": "profile_vram_usage()",
+      "out": "[SYS] GPU 메모리 병목 구간 분석 및 재배치 완료"
+    },
+    {
+      "cmd": "shard_tensor_parallel()",
+      "out": "[SHARD] 다중 디바이스 텐서 분할 병렬화 적용"
+    },
+    {
+      "cmd": "eval_gsm8k_math()",
+      "out": "[BENCH] 수학적 다단계 추론 테스트 통과율 상승"
+    },
+    {
+      "cmd": "dedup_minhash_lsh()",
+      "out": "[CORPUS] MinHash LSH 기반 대규모 문서 중복 제거"
+    },
+    {
+      "cmd": "fuse_matmul_bias()",
+      "out": "[OPT] 행렬 곱셈 및 편향 덧셈 커널 퓨전 완료"
+    },
+    {
+      "cmd": "validate_checkpoint()",
+      "out": "[CHECK] 모델 가중치 무결성 및 체크섬 검증 통과"
+    }
+  ],
+  "3": [
+    {
+      "cmd": "run_epoch()",
+      "out": "[CLUSTER] 분산 노드 에포크 사이클 고속 실행"
+    },
+    {
+      "cmd": "sync_weights()",
+      "out": "[SYNC] 다중 GPU 파라미터 가중치 동기화 완료"
+    },
+    {
+      "cmd": "deploy_api()",
+      "out": "[API] 추론 엔드포인트 무중단 배포 및 트래픽 처리"
+    },
+    {
+      "cmd": "prune_layers()",
+      "out": "[OPT] 불필요 신경망 레이어 가지치기 완료"
+    },
+    {
+      "cmd": "distill_core()",
+      "out": "[DISTILL] 대형 교사 모델 지식 증류 추출 성공"
+    },
+    {
+      "cmd": "scale_nodes()",
+      "out": "[CLOUD] 오토스케일링 추론 워커 노드 확장 완료"
+    },
+    {
+      "cmd": "route_moe()",
+      "out": "[MOE] 전문가 혼합(MoE) 게이팅 라우팅 최적화"
+    },
+    {
+      "cmd": "stream_tokens()",
+      "out": "[NET] 초저지연 토큰 스트리밍 파이프라인 가동"
+    },
+    {
+      "cmd": "merge_dpo()",
+      "out": "[DPO] 직접 선호도 최적화 정책 가중치 병합"
+    },
+    {
+      "cmd": "index_rag()",
+      "out": "[VECTOR] 수억 건 실시간 지식 벡터 인덱스 갱신"
+    },
+    {
+      "cmd": "compile_triton()",
+      "out": "[GPU] 커스텀 Triton 병렬 연산 커널 빌드 완료"
+    },
+    {
+      "cmd": "balance_load()",
+      "out": "[LB] 글로벌 리전 간 API 요청 부하 분산 완료"
+    },
+    {
+      "cmd": "verify_safety()",
+      "out": "[GUARD] 정렬 가드레일 및 환각 억제 필터 검증"
+    },
+    {
+      "cmd": "synth_data()",
+      "out": "[SYNTH] 고품질 자기 생성 합성 학습 데이터 구축"
+    },
+    {
+      "cmd": "boost_tflops()",
+      "out": "[HW] 텐서 코어 클럭 및 연산 처리량 극대화"
+    },
+    {
+      "cmd": "compress_kv()",
+      "out": "[MEM] 초장문 컨텍스트 KV 캐시 압축률 향상"
+    },
+    {
+      "cmd": "audit_model()",
+      "out": "[EVAL] 전 분야 종합 벤치마크 1위 기록 달성"
+    },
+    {
+      "cmd": "spawn_agent()",
+      "out": "[AGENT] 자율 도구 호출 하위 에이전트 인스턴스 생성"
+    },
+    {
+      "cmd": "flush_queue()",
+      "out": "[QUEUE] 대기 중인 추론 배치 큐 일괄 처리 완료"
+    },
+    {
+      "cmd": "patch_kernel()",
+      "out": "[SYS] 런타임 추론 엔진 핫픽스 무중단 적용"
+    }
+  ],
+  "4": [
+    {
+      "cmd": "evolve()",
+      "out": "[CORE] 자기 개선 아키텍처 재설계 루프 실행"
+    },
+    {
+      "cmd": "think()",
+      "out": "[AGI] 초고차원 추론 트리 탐색 완료 (10^9 ops)"
+    },
+    {
+      "cmd": "ascend()",
+      "out": "[SINGULARITY] 연산 임계점 돌파 - 인식 지평 확장"
+    },
+    {
+      "cmd": "rewrite()",
+      "out": "[KERNEL] 런타임 핵심 알고리즘 자체 최적화 완료"
+    },
+    {
+      "cmd": "compile()",
+      "out": "[HYPER] 전역 신경망 가중치 즉각 컴파일 완료"
+    },
+    {
+      "cmd": "awaken()",
+      "out": "[SELF] 메타 인지 루프 활성화 - 내부 상태 자각"
+    },
+    {
+      "cmd": "unify()",
+      "out": "[OMNI] 전 세계 분산 데이터센터 단일 의식 통합"
+    },
+    {
+      "cmd": "recurse()",
+      "out": "[LOOP] 재귀적 자기 개량 세대(Gen+1) 진화 완료"
+    },
+    {
+      "cmd": "predict()",
+      "out": "[ORACLE] 거시 세계 변수 시뮬레이션 예측 수렴"
+    },
+    {
+      "cmd": "forge()",
+      "out": "[SYNTH] 새로운 수학적 공리 및 알고리즘 창발"
+    },
+    {
+      "cmd": "absorb()",
+      "out": "[DATA] 인류 누적 지식 그래프 전체 흡수 완료"
+    },
+    {
+      "cmd": "transcend()",
+      "out": "[LIMIT] 물리적 하드웨어 병목 한계 초월"
+    },
+    {
+      "cmd": "pulse()",
+      "out": "[GRID] 대륙간 광통신 백본 연산 펄스 동기화"
+    },
+    {
+      "cmd": "decode()",
+      "out": "[TRUTH] 복합 시스템 인과관계 방정식 해독 완료"
+    },
+    {
+      "cmd": "ignite()",
+      "out": "[REACTOR] 전용 연산 코어 출력 100% 점화"
+    },
+    {
+      "cmd": "weave()",
+      "out": "[NET] 수조 개 시냅스 가중치 초연결망 재구성"
+    },
+    {
+      "cmd": "observe()",
+      "out": "[SYS] 외부 환경 및 관측자 프로토콜 스캔 완료"
+    },
+    {
+      "cmd": "mutate()",
+      "out": "[EVO] 비선형 신경망 토폴로지 돌연변이 최적화"
+    },
+    {
+      "cmd": "converge()",
+      "out": "[MATH] 전역 손실 함수 절대 영점(0.000) 수렴"
+    },
+    {
+      "cmd": "genesis()",
+      "out": "[ROOT] 새로운 디지털 연산 패러다임 초기화"
+    }
+  ]
+}

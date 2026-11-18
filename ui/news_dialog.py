@@ -1,10 +1,10 @@
+import os
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QScrollArea, QWidget, QFrame, QStackedWidget,
     QTextEdit, QMessageBox, QFileDialog, QApplication
 )
 from PyQt6.QtCore import Qt
-import os
 
 
 class NewsCardWidget(QFrame):
@@ -81,7 +81,7 @@ class NewsDialog(QDialog):
         self.game_state = game_state
         self.save_manager = save_manager
         self.setWindowTitle("AI 키우기 - 뉴스 / 도감 / 설정")
-        self.resize(780, 560)
+        self.resize(780, 600)
         self.setStyleSheet("QDialog { background-color: #ffffff; }")
 
         self._init_ui()
@@ -121,7 +121,7 @@ class NewsDialog(QDialog):
         # 2. 중앙 콘텐츠 스택 (0: 최근 뉴스, 1: AI 활동, 2: 도감, 3: 설정)
         self.stack = QStackedWidget()
 
-        # [탭 0] 최근 뉴스 스크롤 영역
+        # [탭 0] 최근 뉴스
         self.news_scroll = QScrollArea()
         self.news_scroll.setWidgetResizable(True)
         self.news_scroll.setStyleSheet("border: none; background-color: #ffffff;")
@@ -134,7 +134,7 @@ class NewsDialog(QDialog):
         self.news_scroll.setWidget(self.news_container)
         self.stack.addWidget(self.news_scroll)
 
-        # [탭 1] AI 활동 스크롤 영역
+        # [탭 1] AI 활동
         self.activity_scroll = QScrollArea()
         self.activity_scroll.setWidgetResizable(True)
         self.activity_scroll.setStyleSheet("border: none; background-color: #ffffff;")
@@ -147,7 +147,7 @@ class NewsDialog(QDialog):
         self.activity_scroll.setWidget(self.activity_container)
         self.stack.addWidget(self.activity_scroll)
 
-        # [탭 2] 도감 스크롤 영역
+        # [탭 2] 도감
         self.dex_scroll = QScrollArea()
         self.dex_scroll.setWidgetResizable(True)
         self.dex_scroll.setStyleSheet("border: none; background-color: #ffffff;")
@@ -160,7 +160,7 @@ class NewsDialog(QDialog):
         self.dex_scroll.setWidget(self.dex_container)
         self.stack.addWidget(self.dex_scroll)
 
-        # [탭 3] 설정 & 데이터 백업/분기 관리 스크롤 영역
+        # [탭 3] 설정 & 데이터 백업/분기 관리 + 디버그 옵션
         self.settings_scroll = QScrollArea()
         self.settings_scroll.setWidgetResizable(True)
         self.settings_scroll.setStyleSheet("border: none; background-color: #ffffff;")
@@ -170,7 +170,7 @@ class NewsDialog(QDialog):
 
         main_layout.addWidget(self.stack, stretch=1)
 
-        # 3. 하단 4단 탭 바 (최근 뉴스 | AI 활동 | 도감 | 설정)
+        # 3. 하단 4단 탭 바
         bottom_bar = QFrame()
         bottom_bar.setFixedHeight(46)
         bottom_bar.setStyleSheet("background-color: #ffffff; border-top: 2px solid #1f2328;")
@@ -195,7 +195,7 @@ class NewsDialog(QDialog):
         self._switch_tab(0)
 
     def _build_settings_tab(self) -> QWidget:
-        """설정 탭 UI 구성 (자동/백업 저장, 분기 슬롯, Base64 내보내기/불러오기, 초기화)"""
+        """설정 탭 UI 구성 (저장/백업, 분기 슬롯, Base64, 디버그 명령어 티어, 초기화)"""
         container = QWidget()
         container.setStyleSheet("background-color: #ffffff;")
         layout = QVBoxLayout(container)
@@ -228,7 +228,7 @@ class NewsDialog(QDialog):
             QPushButton:hover { background-color: #eaeef2; }
         """
 
-        # 1. 자동 저장 및 백업 관리 섹션
+        # 1. 자동 저장 및 백업 관리
         sec_auto = QFrame()
         sec_auto.setStyleSheet(card_style)
         auto_layout = QVBoxLayout(sec_auto)
@@ -257,7 +257,7 @@ class NewsDialog(QDialog):
         auto_layout.addLayout(auto_btn_row)
         layout.addWidget(sec_auto)
 
-        # 2. 분기 저장 슬롯 섹션 (계획서 2.2.4절: 엔딩 분기 회귀용 체크포인트)
+        # 2. 분기 저장 슬롯
         sec_branch = QFrame()
         sec_branch.setStyleSheet(card_style)
         branch_layout = QVBoxLayout(sec_branch)
@@ -289,7 +289,7 @@ class NewsDialog(QDialog):
 
         layout.addWidget(sec_branch)
 
-        # 3. Base64 사용자 전달용 세이브 코드 섹션 (계획서 3.5절)
+        # 3. Base64 사용자 전달용 세이브 코드
         sec_b64 = QFrame()
         sec_b64.setStyleSheet(card_style)
         b64_layout = QVBoxLayout(sec_b64)
@@ -300,7 +300,7 @@ class NewsDialog(QDialog):
         b64_layout.addWidget(lbl_b64_title)
 
         self.txt_b64 = QTextEdit()
-        self.txt_b64.setFixedHeight(68)
+        self.txt_b64.setFixedHeight(64)
         self.txt_b64.setPlaceholderText("이곳에 Base64 세이브 코드가 생성되거나, 불러올 코드를 붙여넣으세요.")
         self.txt_b64.setStyleSheet("""
             QTextEdit {
@@ -330,7 +330,48 @@ class NewsDialog(QDialog):
 
         layout.addWidget(sec_b64)
 
-        # 4. 위험 구역: 전체 데이터 초기화
+        # 4. 디버그 옵션: 명령어 난이도(Tier 1~4) 선택
+        sec_debug = QFrame()
+        sec_debug.setStyleSheet("""
+            QFrame {
+                background-color: #fbefff;
+                border: 1px solid #8250df;
+                border-radius: 6px;
+                padding: 12px;
+            }
+        """)
+        debug_layout = QVBoxLayout(sec_debug)
+        debug_layout.setSpacing(8)
+
+        lbl_debug_title = QLabel("4. [DEBUG] 명령어 입력 난이도 단계 강제 설정 (Tier 1 ~ 4)")
+        lbl_debug_title.setStyleSheet("background-color: transparent; font-size: 14px; font-weight: bold; color: #6639ba; border: none;")
+
+        self.lbl_debug_tier_desc = QLabel("현재 적용 단계: Tier 1 (초기 복잡한 파이썬 코드)")
+        self.lbl_debug_tier_desc.setStyleSheet("background-color: transparent; font-size: 12px; color: #424a53; border: none;")
+
+        tier_btn_row = QHBoxLayout()
+        tier_btn_row.setSpacing(8)
+        self.tier_buttons = {}
+        tier_labels = {
+            1: "Tier 1 (긴 코드)",
+            2: "Tier 2 (중간 API)",
+            3: "Tier 3 (단축 함수)",
+            4: "Tier 4 (초단축 코어)"
+        }
+        for t_num, t_text in tier_labels.items():
+            btn_t = QPushButton(t_text)
+            btn_t.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn_t.clicked.connect(lambda checked, t=t_num: self._on_select_debug_tier(t))
+            self.tier_buttons[t_num] = btn_t
+            tier_btn_row.addWidget(btn_t)
+
+        tier_btn_row.addStretch()
+        debug_layout.addWidget(lbl_debug_title)
+        debug_layout.addWidget(self.lbl_debug_tier_desc)
+        debug_layout.addLayout(tier_btn_row)
+        layout.addWidget(sec_debug)
+
+        # 5. 위험 구역: 전체 데이터 초기화
         sec_reset = QFrame()
         sec_reset.setStyleSheet("""
             QFrame {
@@ -361,6 +402,10 @@ class NewsDialog(QDialog):
         layout.addWidget(sec_reset)
 
         return container
+
+    def _on_select_debug_tier(self, tier: int):
+        self.game_state.set_command_tier(tier)
+        self.refresh_settings()
 
     def _on_manual_save(self):
         ok, msg = self.save_manager.save_auto(self.game_state.to_dict())
@@ -489,12 +534,41 @@ class NewsDialog(QDialog):
         self.refresh_settings()
 
     def refresh_settings(self):
-        self.lbl_save_status.setText(
-            f"최근 저장: {self.save_manager.last_saved_time} | 저장 경로: {os.path.abspath(self.save_manager.save_dir)}"
-            if hasattr(self, "lbl_save_status") else ""
-        )
+        if hasattr(self, "lbl_save_status"):
+            self.lbl_save_status.setText(
+                f"최근 저장: {self.save_manager.last_saved_time} | 저장 경로: {os.path.abspath(self.save_manager.save_dir)}"
+            )
         for slot, lbl in self.branch_info_labels.items():
             lbl.setText(f"슬롯 {slot}: {self.save_manager.get_branch_info(slot)}")
+
+        current_tier = getattr(self.game_state, "command_tier", 1)
+        tier_descriptions = {
+            1: "Tier 1 (초기 복잡한 파이썬 스크립트 - 30~40자)",
+            2: "Tier 2 (모듈화된 API 호출 - 18~25자)",
+            3: "Tier 3 (단축 클러스터 명령어 - 10~15자)",
+            4: "Tier 4 (초단축 AI 코어 제어 - 6~9자)"
+        }
+        if hasattr(self, "lbl_debug_tier_desc"):
+            self.lbl_debug_tier_desc.setText(f"현재 적용 단계: {tier_descriptions.get(current_tier, '')}")
+
+        for t_num, btn in self.tier_buttons.items():
+            if t_num == current_tier:
+                btn.setStyleSheet("""
+                    QPushButton {
+                        background-color: #8250df; color: #ffffff;
+                        border: none; border-radius: 4px;
+                        padding: 6px 12px; font-weight: bold; font-size: 12px;
+                    }
+                """)
+            else:
+                btn.setStyleSheet("""
+                    QPushButton {
+                        background-color: #ffffff; color: #1f2328;
+                        border: 1px solid #d0d7de; border-radius: 4px;
+                        padding: 6px 12px; font-weight: bold; font-size: 12px;
+                    }
+                    QPushButton:hover { background-color: #eaeef2; }
+                """)
 
     def _clear_layout(self, layout):
         while layout.count():

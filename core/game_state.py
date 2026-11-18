@@ -6,7 +6,8 @@ from PyQt6.QtCore import QObject, pyqtSignal
 
 class GameState(QObject):
     state_changed = pyqtSignal()
-    news_added = pyqtSignal(dict)  # 뉴스 딕셔너리 전체 전달
+    news_added = pyqtSignal(dict)
+    command_tier_changed = pyqtSignal(int)
 
     RANDOM_NEWS_POOL = [
         {
@@ -50,7 +51,7 @@ class GameState(QObject):
             "cost": 150,
             "purchased": False,
             "req": ["init_script"],
-            "desc": "명령어당 토큰 +25, 쿨다운 감소"
+            "desc": "명령어당 토큰 +25, 쿨다운 감소, 명령어 티어 2 해금"
         },
         {
             "id": "act_prompt_eng",
@@ -80,7 +81,7 @@ class GameState(QObject):
             "cost": 800,
             "purchased": False,
             "req": ["act_prompt_eng"],
-            "desc": "입력 쿨다운 50ms로 단축"
+            "desc": "입력 쿨다운 50ms 단축, 명령어 티어 3 해금"
         },
         {
             "id": "pas_vram_expand",
@@ -110,7 +111,7 @@ class GameState(QObject):
             "cost": 3000,
             "purchased": False,
             "req": ["pre_milestone_sync"],
-            "desc": "[마일스톤] 상용 API 서비스 개시"
+            "desc": "[마일스톤] 상용 API 개시, 명령어 티어 4 해금"
         }
     ]
 
@@ -124,6 +125,7 @@ class GameState(QObject):
         self.tokens_per_command: float = 24.0
         self.tokens_per_sec: float = 6.0
         self.input_cooldown_ms: int = 200
+        self.command_tier: int = 1
         self.virtual_day_offset: int = 0
 
         self.specs = {
@@ -166,8 +168,16 @@ class GameState(QObject):
 
         if emit_signal:
             self.state_changed.emit()
+            self.command_tier_changed.emit(self.command_tier)
             if self.news_history:
                 self.news_added.emit(self.news_history[0])
+
+    def set_command_tier(self, tier: int):
+        """명령어 티어(1~4) 변경 및 콘솔 갱신 시그널 발송"""
+        clamped = max(1, min(4, int(tier)))
+        self.command_tier = clamped
+        self.command_tier_changed.emit(self.command_tier)
+        self.state_changed.emit()
 
     def to_dict(self) -> dict:
         """현재 상태를 저장 가능한 딕셔너리로 직렬화"""
@@ -177,6 +187,7 @@ class GameState(QObject):
             "tokens_per_command": self.tokens_per_command,
             "tokens_per_sec": self.tokens_per_sec,
             "input_cooldown_ms": self.input_cooldown_ms,
+            "command_tier": self.command_tier,
             "virtual_day_offset": self.virtual_day_offset,
             "specs": copy.deepcopy(self.specs),
             "purchased_upgrades": [u["id"] for u in self.upgrades if u["purchased"]],
@@ -193,6 +204,7 @@ class GameState(QObject):
         self.tokens_per_command = float(data.get("tokens_per_command", 24.0))
         self.tokens_per_sec = float(data.get("tokens_per_sec", 6.0))
         self.input_cooldown_ms = int(data.get("input_cooldown_ms", 200))
+        self.command_tier = max(1, min(4, int(data.get("command_tier", 1))))
         self.virtual_day_offset = int(data.get("virtual_day_offset", 0))
 
         if isinstance(data.get("specs"), dict):
@@ -213,6 +225,7 @@ class GameState(QObject):
             self.news_history = copy.deepcopy(data["news_history"])
 
         self.state_changed.emit()
+        self.command_tier_changed.emit(self.command_tier)
         if self.news_history:
             self.news_added.emit(self.news_history[0])
 
@@ -283,6 +296,8 @@ class GameState(QObject):
             self.tokens_per_command += 25
             self.input_cooldown_ms = 120
             self.specs["BENCH_SCORE"] += 400
+            if self.command_tier < 2:
+                self.set_command_tier(2)
         elif upgrade_id == "act_prompt_eng":
             self.tokens_per_command *= 2
             self.specs["BENCH_SCORE"] += 1200
@@ -296,6 +311,8 @@ class GameState(QObject):
             self.input_cooldown_ms = 50
             self.tokens_per_command += 50
             self.specs["BENCH_SCORE"] += 3000
+            if self.command_tier < 3:
+                self.set_command_tier(3)
         elif upgrade_id == "pas_vram_expand":
             self.tokens_per_sec += 45
             self.specs["GPU"] = "Dual RTX 3060 (NVLink)"
@@ -313,6 +330,8 @@ class GameState(QObject):
             self.specs["GPU"] = "RTX 4090 24GB"
             self.specs["BENCH_SCORE"] += 25000
             self.unlock_encyclopedia("col_small_llm")
+            if self.command_tier < 4:
+                self.set_command_tier(4)
             self.ai_activities[0]["rate"] = f"{int(self.tokens_per_sec)} Tk/s"
             self.ai_activities[1] = {"name": "유료 API 베타 테스터 응답", "rate": "150 Tk/s", "status": "가동 중"}
             self.push_news(
