@@ -1,10 +1,11 @@
 import os
+import time
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QScrollArea, QWidget, QFrame, QStackedWidget,
     QTextEdit, QMessageBox, QFileDialog, QApplication
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QPropertyAnimation, QPoint, QEasingCurve, QTimer
 
 
 class NewsCardWidget(QFrame):
@@ -14,9 +15,9 @@ class NewsCardWidget(QFrame):
         super().__init__()
         category = news_item.get("category", "info")
         color_schemes = {
-            "info": ("#fae17d", "#9a6700"),    # 노란색 카드
-            "danger": ("#f28b96", "#a40e26"),  # 빨간색/분홍색 카드
-            "story": ("#d99be6", "#6639ba")    # 보라색 카드
+            "info": ("#fae17d", "#9a6700"),    # 노란색 카드 (일반/호재)
+            "danger": ("#f28b96", "#a40e26"),  # 빨간색/분홍색 카드 (악재/위기)
+            "story": ("#d99be6", "#6639ba")    # 보라색 카드 (핵심 스토리/마일스톤)
         }
         bg_color, border_color = color_schemes.get(category, ("#fae17d", "#9a6700"))
 
@@ -84,9 +85,49 @@ class NewsDialog(QDialog):
         self.resize(780, 600)
         self.setStyleSheet("QDialog { background-color: #ffffff; }")
 
+        self._auto_open_guard_until = 0.0
+        self._top_card_anim: QPropertyAnimation | None = None
+
         self._init_ui()
         self._connect_signals()
         self.refresh_all()
+
+    def keyPressEvent(self, event):
+        """마일스톤 자동 팝업 직후 0.65초 동안 실수로 Esc/Enter/Space를 눌러 창이 닫히는 것 방지"""
+        if time.time() < self._auto_open_guard_until:
+            if event.key() in (Qt.Key.Key_Escape, Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Space):
+                event.accept()
+                return
+        super().keyPressEvent(event)
+
+    def open_recent_news(self, auto_triggered: bool = False, animate_top_card: bool = False):
+        """최근 뉴스 탭으로 전환하면서 읽음 처리 및 필요 시 상단 카드 슬라이드 연출"""
+        if auto_triggered:
+            self._auto_open_guard_until = time.time() + 0.65
+        self._switch_tab(0)
+        self.game_state.clear_unread_news()
+        if animate_top_card:
+            QTimer.singleShot(20, self._animate_first_news_card)
+
+    def _animate_first_news_card(self):
+        if self.news_list_layout.count() == 0:
+            return
+        first_item = self.news_list_layout.itemAt(0)
+        card = first_item.widget() if first_item else None
+        if not card:
+            return
+
+        target_pos = card.pos()
+        start_pos = QPoint(target_pos.x() + 180, target_pos.y())
+        card.move(start_pos)
+
+        anim = QPropertyAnimation(card, b"pos", self)
+        anim.setDuration(300)
+        anim.setStartValue(start_pos)
+        anim.setEndValue(target_pos)
+        anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self._top_card_anim = anim
+        anim.start()
 
     def _init_ui(self):
         main_layout = QVBoxLayout(self)
@@ -494,13 +535,23 @@ class NewsDialog(QDialog):
             QMessageBox.information(self, "초기화 완료", "모든 진행 데이터가 초기화되었습니다.")
 
     def _connect_signals(self):
-        self.game_state.news_added.connect(lambda _: self.refresh_news())
+        self.game_state.news_added.connect(self._on_news_updated_in_dialog)
         self.game_state.state_changed.connect(self.refresh_activities_and_dex)
+
+    def _on_news_updated_in_dialog(self, _news_item: dict):
+        self.refresh_news()
+        # 이미 팝업이 열려 있고 현재 0번 탭(최근 뉴스)을 보고 있다면 즉시 읽음 처리
+        if self.isVisible() and self.stack.currentIndex() == 0:
+            self.game_state.clear_unread_news()
+            self._animate_first_news_card()
 
     def _switch_tab(self, index: int):
         self.stack.setCurrentIndex(index)
         titles = ["NEWS", "AI ACTIVITY", "ENCYCLOPEDIA (도감)", "SETTINGS (설정 및 백업)"]
         self.lbl_header_title.setText(titles[index])
+
+        if index == 0:
+            self.game_state.clear_unread_news()
 
         for i, btn in enumerate(self.tab_buttons):
             if i == index:

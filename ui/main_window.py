@@ -2,13 +2,134 @@ from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
     QLabel, QFrame, QPushButton, QMessageBox, QFileDialog
 )
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import Qt, QTimer, QPropertyAnimation, QParallelAnimationGroup, QPoint, QEasingCurve
+from PyQt6.QtGui import QFontMetrics
 from core.game_state import GameState
 from core.save_manager import SaveManager
 from core.number_format import format_number
 from ui.console_widget import VirtualConsoleWidget
 from ui.tree_widget import UpgradeTreeWidget
 from ui.news_dialog import NewsDialog
+
+
+class MiniNewsTickerWidget(QWidget):
+    """새 뉴스 도착 시 기존 카드는 아래로 밀려나고 새 카드가 오른쪽에서 슬라이드 인 되는 미니 패널"""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setMinimumHeight(86)
+
+        self.card_1 = QLabel(self)
+        self.card_2 = QLabel(self)
+        self._item_1: dict | None = None
+        self._item_2: dict | None = None
+        self._anim_group: QParallelAnimationGroup | None = None
+
+        for card in (self.card_1, self.card_2):
+            card.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+            card.hide()
+
+    def _card_geometry(self) -> tuple[int, int, int, int]:
+        w = max(120, self.width())
+        h = max(72, self.height())
+        gap = 6
+        card_h = max(30, (h - gap) // 2)
+        y1 = 0
+        y2 = card_h + gap
+        return w, card_h, y1, y2
+
+    def _style_card(self, label: QLabel, news_item: dict, width: int):
+        color_schemes = {
+            "info": ("#fae17d", "#9a6700"),
+            "danger": ("#f28b96", "#a40e26"),
+            "story": ("#d99be6", "#6639ba")
+        }
+        bg, border = color_schemes.get(news_item.get("category", "info"), ("#fae17d", "#9a6700"))
+        label.setStyleSheet(f"""
+            background-color: {bg};
+            border: 1px solid {border};
+            border-radius: 4px;
+            padding: 4px 8px;
+            font-size: 12px;
+            font-weight: bold;
+            color: #1f2328;
+        """)
+        metrics = QFontMetrics(label.font())
+        elided = metrics.elidedText(news_item.get("title", ""), Qt.TextElideMode.ElideRight, max(60, width - 20))
+        label.setText(elided)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if self._anim_group and self._anim_group.state() == QPropertyAnimation.State.Running:
+            self._anim_group.stop()
+        self._snap_positions()
+
+    def _snap_positions(self):
+        w, card_h, y1, y2 = self._card_geometry()
+        if self._item_1:
+            self._style_card(self.card_1, self._item_1, w)
+            self.card_1.setGeometry(0, y1, w, card_h)
+            self.card_1.show()
+        else:
+            self.card_1.hide()
+
+        if self._item_2:
+            self._style_card(self.card_2, self._item_2, w)
+            self.card_2.setGeometry(0, y2, w, card_h)
+            self.card_2.show()
+        else:
+            self.card_2.hide()
+
+    def set_initial_items(self, history: list[dict]):
+        """초기 로드/리셋 시 애니메이션 없이 즉시 2개 카드 배치"""
+        if self._anim_group and self._anim_group.state() == QPropertyAnimation.State.Running:
+            self._anim_group.stop()
+        self._item_1 = history[0] if len(history) >= 1 else None
+        self._item_2 = history[1] if len(history) >= 2 else None
+        self._snap_positions()
+
+    def push_animated_item(self, new_item: dict, prev_top_item: dict | None):
+        """새 뉴스는 오른쪽 바깥에서 슬라이드 인, 기존 1번 뉴스는 2번 위치로 하강 이동"""
+        if self._anim_group and self._anim_group.state() == QPropertyAnimation.State.Running:
+            self._anim_group.stop()
+
+        w, card_h, y1, y2 = self._card_geometry()
+
+        # 기존 1번 카드를 2번 카드로 승계하여 위->아래 이동 준비
+        self._item_2 = prev_top_item
+        self._item_1 = new_item
+
+        group = QParallelAnimationGroup(self)
+
+        if self._item_2:
+            self._style_card(self.card_2, self._item_2, w)
+            self.card_2.setGeometry(0, y1, w, card_h)
+            self.card_2.show()
+
+            anim_down = QPropertyAnimation(self.card_2, b"pos", self)
+            anim_down.setDuration(260)
+            anim_down.setStartValue(QPoint(0, y1))
+            anim_down.setEndValue(QPoint(0, y2))
+            anim_down.setEasingCurve(QEasingCurve.Type.OutCubic)
+            group.addAnimation(anim_down)
+        else:
+            self.card_2.hide()
+
+        # 새 카드를 오른쪽 끝(w)에서 제자리(0)로 슬라이드 인
+        self._style_card(self.card_1, self._item_1, w)
+        self.card_1.setGeometry(w, y1, w, card_h)
+        self.card_1.show()
+        self.card_1.raise_()
+
+        anim_slide = QPropertyAnimation(self.card_1, b"pos", self)
+        anim_slide.setDuration(280)
+        anim_slide.setStartValue(QPoint(w, y1))
+        anim_slide.setEndValue(QPoint(0, y1))
+        anim_slide.setEasingCurve(QEasingCurve.Type.OutCubic)
+        group.addAnimation(anim_slide)
+
+        self._anim_group = group
+        group.start()
 
 
 class MainWindow(QMainWindow):
@@ -21,10 +142,15 @@ class MainWindow(QMainWindow):
         self.save_manager = SaveManager()
         self.news_dialog = None
 
+        # 시그널 연결 및 초기 세이브 로드 전에 알림 타이머를 먼저 생성
+        self.news_toast_timer = QTimer(self)
+        self.news_toast_timer.setSingleShot(True)
+
         self._init_ui()
+        self.news_toast_timer.timeout.connect(lambda: self.lbl_news_toast.hide())
         self._connect_signals()
 
-        # 시작 시 기존 세이브 파일 로드 및 손상/백업 예외 처리 (계획서 2.5.3절)
+        # 시작 시 기존 세이브 파일 로드 및 손상/백업 예외 처리
         self._load_initial_save()
 
         # 0.1초(100ms) 주기 패시브 토큰 수급 타이머
@@ -37,13 +163,14 @@ class MainWindow(QMainWindow):
         self.news_timer.timeout.connect(self.game_state.trigger_random_news)
         self.news_timer.start(25000)
 
-        # 30초 주기 자동 저장 및 백업 타이머 (계획서 2.2.4절)
+        # 30초 주기 자동 저장 및 백업 타이머
         self.autosave_timer = QTimer(self)
         self.autosave_timer.timeout.connect(self._on_autosave_tick)
         self.autosave_timer.start(30000)
 
         self._update_ui()
-        self._refresh_mini_news()
+        self.mini_news_ticker.set_initial_items(self.game_state.news_history)
+        self._update_unread_badge(self.game_state.unread_news_count)
 
     def _load_initial_save(self):
         status, data = self.save_manager.load_auto()
@@ -150,28 +277,60 @@ class MainWindow(QMainWindow):
         news_box = QFrame()
         news_box.setStyleSheet("border-left: 2px solid #d0d7de;")
         news_layout = QVBoxLayout(news_box)
-        news_layout.setContentsMargins(10, 6, 10, 6)
+        news_layout.setContentsMargins(10, 6, 10, 8)
         news_layout.setSpacing(6)
 
         news_header = QHBoxLayout()
+        news_header.setSpacing(6)
+
         lbl_news_title = QLabel("NEWS")
-        lbl_news_title.setStyleSheet("font-size: 15px; font-weight: bold; border: none;")
+        lbl_news_title.setStyleSheet("font-size: 15px; font-weight: bold; color: #1f2328; border: none;")
+
+        # NEWS 글자 옆 안 읽은 뉴스 숫자 빨간 배지
+        self.lbl_unread_badge = QLabel("0")
+        self.lbl_unread_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.lbl_unread_badge.setFixedHeight(20)
+        self.lbl_unread_badge.setMinimumWidth(20)
+        self.lbl_unread_badge.setStyleSheet("""
+            background-color: #cf222e;
+            color: #ffffff;
+            border-radius: 10px;
+            padding: 0px 6px;
+            font-size: 11px;
+            font-weight: bold;
+            border: none;
+        """)
+        self.lbl_unread_badge.hide()
+
+        # 새 뉴스 도착 시 3초간 잠깐 뜨는 짧은 도착 알림
+        self.lbl_news_toast = QLabel("새 뉴스 도착")
+        self.lbl_news_toast.setStyleSheet("""
+            background-color: #ddf4ff;
+            color: #0969da;
+            border: 1px solid #54aeff;
+            border-radius: 4px;
+            padding: 1px 6px;
+            font-size: 11px;
+            font-weight: bold;
+        """)
+        self.lbl_news_toast.hide()
 
         btn_news_expand = QPushButton("↗")
         btn_news_expand.setFixedSize(28, 24)
         btn_news_expand.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_news_expand.setToolTip("전체 뉴스 / AI 활동 / 도감 / 설정 열기")
-        btn_news_expand.clicked.connect(self._show_news_popup)
+        btn_news_expand.clicked.connect(lambda: self._show_news_popup(auto_triggered=False))
 
         news_header.addWidget(lbl_news_title)
+        news_header.addWidget(self.lbl_unread_badge)
+        news_header.addWidget(self.lbl_news_toast)
         news_header.addStretch()
         news_header.addWidget(btn_news_expand)
         news_layout.addLayout(news_header)
 
-        self.lbl_news_1 = QLabel()
-        self.lbl_news_2 = QLabel()
-        news_layout.addWidget(self.lbl_news_1)
-        news_layout.addWidget(self.lbl_news_2)
+        # 오른쪽에서 슬라이드 인 되는 2단 뉴스 티커 영역
+        self.mini_news_ticker = MiniNewsTickerWidget()
+        news_layout.addWidget(self.mini_news_ticker, stretch=1)
         bottom_layout.addWidget(news_box, stretch=1)
 
         left_layout.addWidget(bottom_bar)
@@ -184,6 +343,7 @@ class MainWindow(QMainWindow):
     def _connect_signals(self):
         self.game_state.state_changed.connect(self._update_ui)
         self.game_state.news_added.connect(self._on_news_added)
+        self.game_state.unread_news_changed.connect(self._update_unread_badge)
 
     def _on_tick(self):
         self.game_state.add_passive_tokens(0.1)
@@ -208,33 +368,59 @@ class MainWindow(QMainWindow):
 
         self.tree_widget.refresh_tree()
 
-    def _apply_mini_card_style(self, label: QLabel, news_item: dict):
-        color_schemes = {
-            "info": ("#fae17d", "#9a6700"),
-            "danger": ("#f28b96", "#a40e26"),
-            "story": ("#d99be6", "#6639ba")
-        }
-        bg, border = color_schemes.get(news_item.get("category", "info"), ("#fae17d", "#9a6700"))
-        label.setText(news_item["title"])
-        label.setStyleSheet(f"""
-            background-color: {bg}; border: 1px solid {border};
-            border-radius: 4px; padding: 6px; font-size: 12px; font-weight: bold;
-        """)
-
-    def _refresh_mini_news(self):
-        history = self.game_state.news_history
-        if len(history) >= 1:
-            self._apply_mini_card_style(self.lbl_news_1, history[0])
-        if len(history) >= 2:
-            self._apply_mini_card_style(self.lbl_news_2, history[1])
+    def _update_unread_badge(self, count: int):
+        if count <= 0:
+            self.lbl_unread_badge.hide()
+        else:
+            text = "99+" if count > 99 else str(count)
+            self.lbl_unread_badge.setText(text)
+            self.lbl_unread_badge.show()
 
     def _on_news_added(self, news_item: dict):
-        self._refresh_mini_news()
+        history = self.game_state.news_history
+        prev_top = history[1] if len(history) >= 2 else None
+        self.mini_news_ticker.push_animated_item(news_item, prev_top)
 
-    def _show_news_popup(self):
+        if news_item.get("is_milestone", False):
+            # 마일스톤 스토리 뉴스는 팝업을 즉시 자동으로 오픈
+            self._show_news_popup(auto_triggered=True)
+        else:
+            # 일반/악재 랜덤 뉴스는 짧은 도착 알림만 3초간 표시
+            is_danger = (news_item.get("category") == "danger")
+            if is_danger:
+                self.lbl_news_toast.setText("긴급 속보 도착")
+                self.lbl_news_toast.setStyleSheet("""
+                    background-color: #ffebe9;
+                    color: #cf222e;
+                    border: 1px solid #ff8182;
+                    border-radius: 4px;
+                    padding: 1px 6px;
+                    font-size: 11px;
+                    font-weight: bold;
+                """)
+            else:
+                self.lbl_news_toast.setText("새 뉴스 도착")
+                self.lbl_news_toast.setStyleSheet("""
+                    background-color: #ddf4ff;
+                    color: #0969da;
+                    border: 1px solid #54aeff;
+                    border-radius: 4px;
+                    padding: 1px 6px;
+                    font-size: 11px;
+                    font-weight: bold;
+                """)
+            self.lbl_news_toast.show()
+            self.news_toast_timer.start(3000)
+
+    def _show_news_popup(self, auto_triggered: bool = False):
         if self.news_dialog is None:
             self.news_dialog = NewsDialog(self.game_state, self.save_manager, self)
-        self.news_dialog.refresh_all()
+
+        # 팝업 열 때 0번 탭(최근 뉴스)으로 이동 및 안 읽은 뉴스 카운트 초기화
+        self.news_dialog.open_recent_news(
+            auto_triggered=auto_triggered,
+            animate_top_card=auto_triggered
+        )
         self.news_dialog.show()
         self.news_dialog.raise_()
         self.news_dialog.activateWindow()

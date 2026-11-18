@@ -7,6 +7,7 @@ from PyQt6.QtCore import QObject, pyqtSignal
 class GameState(QObject):
     state_changed = pyqtSignal()
     news_added = pyqtSignal(dict)
+    unread_news_changed = pyqtSignal(int)
     command_tier_changed = pyqtSignal(int)
 
     RANDOM_NEWS_POOL = [
@@ -28,7 +29,7 @@ class GameState(QObject):
         {
             "title": "국내 대학생 개발자들 사이에서 '나만의 LLM 만들기' 열풍",
             "content": "기숙사 방 한켠에서 시작한 개인 AI 프로젝트가 잇따라 벤치마크 기록을 경신하며 업계의 주목을 받고 있다.",
-            "category": "story"
+            "category": "info"
         }
     ]
 
@@ -127,6 +128,7 @@ class GameState(QObject):
         self.input_cooldown_ms: int = 200
         self.command_tier: int = 1
         self.virtual_day_offset: int = 0
+        self.unread_news_count: int = 0
 
         self.specs = {
             "CPU": "Intel i5-12400F (로컬 테스트용)",
@@ -141,13 +143,15 @@ class GameState(QObject):
                 "title": "1인 개발 AI, 최초 공개 후 커뮤니티 화제...",
                 "date": "2026. 11. 05",
                 "content": "지난밤 개인 개발자로부터 탄생한 초기 로컬 AI 모델이 공식적으로 첫 구동을 시작했다. 아직은 단순 명령어만 처리하지만...",
-                "category": "story"
+                "category": "story",
+                "is_milestone": False
             },
             {
                 "title": "InstantGram, AI 개발 우려 표명.. AI 산업 주춤",
                 "date": "2026. 11. 04",
                 "content": "최근 InstantGram의 CEO가 제8차 AI 컨퍼런스에서 한 발언이 화제가 되고 있다. AI의 개발은 인류에게...",
-                "category": "danger"
+                "category": "danger",
+                "is_milestone": False
             }
         ]
 
@@ -169,6 +173,7 @@ class GameState(QObject):
         if emit_signal:
             self.state_changed.emit()
             self.command_tier_changed.emit(self.command_tier)
+            self.unread_news_changed.emit(self.unread_news_count)
             if self.news_history:
                 self.news_added.emit(self.news_history[0])
 
@@ -178,6 +183,12 @@ class GameState(QObject):
         self.command_tier = clamped
         self.command_tier_changed.emit(self.command_tier)
         self.state_changed.emit()
+
+    def clear_unread_news(self):
+        """뉴스 팝업 확인 시 안 읽은 뉴스 카운트 초기화"""
+        if self.unread_news_count != 0:
+            self.unread_news_count = 0
+            self.unread_news_changed.emit(0)
 
     def to_dict(self) -> dict:
         """현재 상태를 저장 가능한 딕셔너리로 직렬화"""
@@ -189,6 +200,7 @@ class GameState(QObject):
             "input_cooldown_ms": self.input_cooldown_ms,
             "command_tier": self.command_tier,
             "virtual_day_offset": self.virtual_day_offset,
+            "unread_news_count": self.unread_news_count,
             "specs": copy.deepcopy(self.specs),
             "purchased_upgrades": [u["id"] for u in self.upgrades if u["purchased"]],
             "unlocked_encyclopedia": [d["id"] for d in self.encyclopedia if d["unlocked"]],
@@ -206,6 +218,7 @@ class GameState(QObject):
         self.input_cooldown_ms = int(data.get("input_cooldown_ms", 200))
         self.command_tier = max(1, min(4, int(data.get("command_tier", 1))))
         self.virtual_day_offset = int(data.get("virtual_day_offset", 0))
+        self.unread_news_count = max(0, int(data.get("unread_news_count", 0)))
 
         if isinstance(data.get("specs"), dict):
             self.specs.update(data["specs"])
@@ -226,6 +239,7 @@ class GameState(QObject):
 
         self.state_changed.emit()
         self.command_tier_changed.emit(self.command_tier)
+        self.unread_news_changed.emit(self.unread_news_count)
         if self.news_history:
             self.news_added.emit(self.news_history[0])
 
@@ -234,21 +248,28 @@ class GameState(QObject):
         self.virtual_day_offset += 1
         return base_date.strftime("%Y. %m. %d")
 
-    def push_news(self, title: str, content: str, category: str = "info"):
+    def push_news(self, title: str, content: str, category: str = "info", is_milestone: bool = False):
         news_item = {
             "title": title,
             "date": self._get_current_game_date(),
             "content": content,
-            "category": category
+            "category": category,
+            "is_milestone": is_milestone
         }
         self.news_history.insert(0, news_item)
         if len(self.news_history) > 30:
             self.news_history.pop()
+
+        # 일반/악재 랜덤 뉴스는 안 읽은 카운트 증가, 마일스톤 뉴스는 즉시 팝업이므로 카운트 미증가
+        if not is_milestone:
+            self.unread_news_count += 1
+            self.unread_news_changed.emit(self.unread_news_count)
+
         self.news_added.emit(news_item)
 
     def trigger_random_news(self):
         sample = random.choice(self.RANDOM_NEWS_POOL)
-        self.push_news(sample["title"], sample["content"], sample["category"])
+        self.push_news(sample["title"], sample["content"], sample["category"], is_milestone=False)
 
     def unlock_encyclopedia(self, item_id: str):
         for item in self.encyclopedia:
@@ -337,5 +358,6 @@ class GameState(QObject):
             self.push_news(
                 "OO, 개인 개발 AI 최초 수능 1등급 달성",
                 "최근 1인 개발로 탄생한 AI 모델 OO이 모의 수능 전 과목 1등급을 달성하며 학계와 산업계의 이목을 끌었다...",
-                "info"
+                category="story",
+                is_milestone=True
             )
