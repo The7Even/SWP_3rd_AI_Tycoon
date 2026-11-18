@@ -1,253 +1,284 @@
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-    QScrollArea, QFrame, QToolTip
+    QWidget, QVBoxLayout, QScrollArea, QPushButton, QLabel, QFrame
 )
-from PyQt6.QtGui import QPainter, QColor, QPen, QBrush, QFont
-from PyQt6.QtCore import Qt, QRectF
+from PyQt6.QtCore import Qt, QPoint
+from PyQt6.QtGui import QPainter, QPen, QColor, QFont
 from core.number_format import format_number
 
 
-class SkillTreeCanvas(QWidget):
-    """QPainter를 이용해 직각 연결선과 [row, col] 노드를 직접 렌더링하고 클릭/호버를 처리하는 캔버스"""
+class TreeCanvas(QWidget):
+    """노드 간 직교 연결선과 챕터 구분선(미도달 시 정보 비공개)을 그리는 트리 캔버스"""
+
+    CHAPTER_TITLES = {
+        1: "CHAPTER 1 · 기초 연산 환경 구축",
+        2: "CHAPTER 2 · 딥러닝 프레임워크 도입",
+        3: "CHAPTER 3 · 하이브리드 파이프라인 & 첫 공개",
+        4: "CHAPTER 4 · 아키텍처 도약 (AI 2.0)",
+        5: "CHAPTER 5 · 상용화 & 유료 모델 (AI 3.0)",
+        6: "CHAPTER 6 · 대중화 & 범용 지능 (AI 4.0~5.0)",
+        7: "CHAPTER 7 · 국가 기간망 & 통제 경계 (AI 6.0~7.0)",
+        8: "CHAPTER 8 · 특이점 (SINGULARITY)"
+    }
+
+    # 노드 타입별 색상 팔레트: (구매가능 배경색, 호버색, 구매가능 테두리색, 토큰부족 대기 테두리색)
+    TYPE_COLORS = {
+        "active": ("#cf222e", "#a40e26", "#82071e", "#ff8182"),  # 액티브(좌): 붉은색 계열
+        "passive": ("#1a7f37", "#116329", "#0a461c", "#4ac26b"),  # 패시브(우): 녹색 계열
+        "common": ("#0969da", "#0860ca", "#0550ae", "#54aeff"),  # 공통/중립(중): 푸른색 계열
+        "story": ("#8250df", "#6639ba", "#512a97", "#a371f7"),  # 스토리/마일스톤(중): 보라색 계열
+    }
 
     def __init__(self, game_state, parent=None):
         super().__init__(parent)
         self.game_state = game_state
-        self.node_width = 88
-        self.node_height = 48
-        self.row_gap = 82
-        self.top_margin = 55
+        self.node_buttons: dict[str, QPushButton] = {}
+        self.node_centers: dict[str, QPoint] = {}
+        self.chapter_rows: dict[int, int] = {}
 
-        self.setMouseTracking(True)
-        self.hovered_node_id = None
-        self._update_canvas_height()
+        self.row_height = 104
+        self.top_margin = 34
+        self.setMinimumWidth(300)
+        self._build_nodes()
 
-    def _update_canvas_height(self):
-        if not self.game_state.upgrades:
-            self.setMinimumHeight(600)
-            return
-        max_row = max(u["row"] for u in self.game_state.upgrades)
-        total_height = self.top_margin + max_row * self.row_gap + 40
-        self.setMinimumHeight(max(600, total_height))
+    def _build_nodes(self):
+        for btn in self.node_buttons.values():
+            btn.deleteLater()
+        self.node_buttons.clear()
+        self.chapter_rows.clear()
 
-    def get_node_center(self, row: int, col: int):
-        w = self.width()
-        # 가로축 1(Active: 25%), 2(Common/Story: 50%), 3(Passive: 75%)
-        x_map = {1: w * 0.25, 2: w * 0.50, 3: w * 0.75}
-        center_x = x_map.get(col, w * 0.50)
-        center_y = self.top_margin + (row - 1) * self.row_gap
-        return center_x, center_y
+        max_row = 1
+        for upg in self.game_state.upgrades:
+            row = int(upg.get("row", 1))
+            chap = int(upg.get("chapter", 1))
+            if row > max_row:
+                max_row = row
+            if chap not in self.chapter_rows or row < self.chapter_rows[chap]:
+                self.chapter_rows[chap] = row
 
-    def get_node_rect(self, row: int, col: int) -> QRectF:
-        cx, cy = self.get_node_center(row, col)
-        return QRectF(
-            cx - self.node_width / 2,
-            cy - self.node_height / 2,
-            self.node_width,
-            self.node_height
-        )
+            btn = QPushButton(self)
+            btn.setFixedSize(92, 62)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            uid = upg["id"]
+            btn.clicked.connect(lambda checked, x=uid: self._on_node_clicked(x))
+            self.node_buttons[uid] = btn
 
-    def get_node_color(self, node: dict) -> QColor:
-        """노드 타입 및 잠금/구매 상태에 따른 색상 반환"""
-        base_colors = {
-            "common": QColor("#7CC3F2"),   # 하늘색
-            "active": QColor("#FF7676"),   # 빨간색
-            "passive": QColor("#A5D6A7"),  # 초록색
-            "story": QColor("#D197E6")     # 보라색
+        total_height = self.top_margin + (max_row * self.row_height) + 70
+        self.setMinimumHeight(total_height)
+        self.resize(self.width(), total_height)
+
+    def _on_node_clicked(self, upgrade_id: str):
+        if self.game_state.purchase_upgrade(upgrade_id):
+            self.update_node_states(scroll_to_next=True)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._reposition_nodes()
+
+    def _reposition_nodes(self):
+        w = max(self.width(), 300)
+        col_x = {
+            1: int(w * 0.22),
+            2: int(w * 0.50),
+            3: int(w * 0.78),
         }
-        base = base_colors.get(node["type"], QColor("#7CC3F2"))
 
-        if node["purchased"]:
-            return base
-        elif self.game_state.can_unlock(node["id"]):
-            # 해금되었으나 아직 미구매 상태 (살짝 연하게 표시)
-            if self.game_state.tokens >= node["cost"]:
-                return base.lighter(108)
-            else:
-                return base.lighter(122)
-        else:
-            # 선행 조건 미달성 (잠김)
-            return QColor("#D8DEE4")
+        self.node_centers.clear()
+        for upg in self.game_state.upgrades:
+            uid = upg["id"]
+            btn = self.node_buttons.get(uid)
+            if not btn:
+                continue
+            cx = col_x.get(upg["col"], int(w * 0.50))
+            cy = self.top_margin + (upg["row"] - 1) * self.row_height + 44
+            btn.move(cx - btn.width() // 2, cy - btn.height() // 2)
+            self.node_centers[uid] = QPoint(cx, cy)
 
-    def _find_node_at(self, pos) -> dict | None:
-        for node in self.game_state.upgrades:
-            rect = self.get_node_rect(node["row"], node["col"])
-            if rect.contains(pos):
-                return node
-        return None
+        self.update()
 
-    def mouseMoveEvent(self, event):
-        node = self._find_node_at(event.position())
-        new_hover_id = node["id"] if node else None
+    def update_node_states(self, scroll_to_next: bool = False):
+        if len(self.node_buttons) != len(self.game_state.upgrades):
+            self._build_nodes()
+            self._reposition_nodes()
 
-        if new_hover_id != self.hovered_node_id:
-            self.hovered_node_id = new_hover_id
-            if node:
-                if node["purchased"] or self.game_state.can_unlock(node["id"]):
-                    self.setCursor(Qt.CursorShape.PointingHandCursor)
-                    cost_str = format_number(node["cost"])
-                    status = "완료됨" if node["purchased"] else f"비용: {cost_str} Tk"
-                    tip = f"[{node['name']}]\n{node['desc']}\n({status})"
+        first_unlocked_y = None
+
+        for upg in self.game_state.upgrades:
+            uid = upg["id"]
+            btn = self.node_buttons[uid]
+            purchased = upg["purchased"]
+            unlocked = self.game_state.can_unlock(uid)
+            affordable = self.game_state.tokens >= upg["cost"]
+            ntype = upg.get("type", "common")
+            is_story = (ntype == "story" or isinstance(upg.get("story_event"), dict))
+            bg_c, hover_c, border_c, wait_border = self.TYPE_COLORS.get(
+                "story" if is_story else ntype,
+                self.TYPE_COLORS["common"]
+            )
+
+            # 트리 전체 구조가 항상 다 보이도록 모든 노드를 표시
+            btn.setVisible(True)
+
+            if purchased:
+                btn.setEnabled(True)
+                if is_story:
+                    btn.setText(f"★ {upg['name']}\n[완료]")
+                    btn.setStyleSheet("""
+                        QPushButton {
+                            background-color: #fbefff; border: 2px solid #8250df;
+                            border-radius: 6px; color: #512a97; font-size: 10px; font-weight: bold;
+                        }
+                    """)
                 else:
-                    self.setCursor(Qt.CursorShape.ForbiddenCursor)
-                    tip = "선행 업그레이드를 먼저 완료해야 합니다."
-                QToolTip.showText(event.globalPosition().toPoint(), tip, self)
-            else:
-                self.setCursor(Qt.CursorShape.ArrowCursor)
-                QToolTip.hideText()
-            self.update()
+                    btn.setText(f"{upg['name']}\n[완료]")
+                    btn.setStyleSheet("""
+                        QPushButton {
+                            background-color: #dafbe1; border: 2px solid #2da44e;
+                            border-radius: 6px; color: #1a7f37; font-size: 10px; font-weight: bold;
+                        }
+                    """)
+                btn.setToolTip(
+                    f"{upg['name']} (Chap {upg.get('chapter', 1)})\n"
+                    f"비용: {format_number(upg['cost'])} Token\n"
+                    f"효과: {upg['desc']}"
+                )
+            elif unlocked:
+                btn.setEnabled(True)
+                if first_unlocked_y is None:
+                    first_unlocked_y = btn.y()
 
-    def mousePressEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton:
-            node = self._find_node_at(event.position())
-            if node and self.game_state.can_unlock(node["id"]):
-                if self.game_state.purchase_upgrade(node["id"]):
-                    self.update()
+                cost_str = format_number(upg["cost"])
+                if is_story:
+                    ev_num = upg.get("story_event", {}).get("number", "")
+                    prefix = f"[STORY #{ev_num}]\n" if ev_num else "[STORY]\n"
+                    btn.setText(f"{prefix}{upg['name']}\n({cost_str} Tk)")
+                else:
+                    btn.setText(f"{upg['name']}\n({cost_str} Tk)")
+
+                if affordable:
+                    btn.setStyleSheet(f"""
+                        QPushButton {{
+                            background-color: {bg_c}; border: 2px solid {border_c};
+                            border-radius: 6px; color: #ffffff; font-size: 10px; font-weight: bold;
+                        }}
+                        QPushButton:hover {{ background-color: {hover_c}; }}
+                    """)
+                else:
+                    btn.setStyleSheet(f"""
+                        QPushButton {{
+                            background-color: #ffffff; border: 2px solid {wait_border};
+                            border-radius: 6px; color: #24292f; font-size: 10px; font-weight: bold;
+                        }}
+                    """)
+                btn.setToolTip(
+                    f"{upg['name']} (Chap {upg.get('chapter', 1)})\n"
+                    f"비용: {format_number(upg['cost'])} Token\n"
+                    f"효과: {upg['desc']}"
+                )
+            else:
+                # 아직 열리지 않은 노드는 ??? (잠김)으로 표시하되 전체 구조 윤곽은 모두 노출
+                btn.setEnabled(False)
+                btn.setText("???\n(잠김)")
+                btn.setStyleSheet("""
+                    QPushButton {
+                        background-color: #eaeef2; border: 1px dashed #afb8c1;
+                        border-radius: 6px; color: #6e7781; font-size: 10px;
+                    }
+                """)
+                btn.setToolTip("이전 단계 업그레이드를 완료하면 해금됩니다.")
+
+        self.update()
+
+        if scroll_to_next and first_unlocked_y is not None:
+            parent_scroll = self.parentWidget()
+            while parent_scroll and not isinstance(parent_scroll, QScrollArea):
+                parent_scroll = parent_scroll.parentWidget()
+            if isinstance(parent_scroll, QScrollArea):
+                parent_scroll.ensureVisible(150, first_unlocked_y + 40, 20, 140)
 
     def paintEvent(self, event):
+        super().paintEvent(event)
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
-        # 1. 배경 클리어
-        painter.fillRect(self.rect(), QColor("#FFFFFF"))
+        # 도달(해금 또는 구매)한 챕터 판별: 도달하기 전까지는 챕터 제목 숨김
+        reached_chapters = set()
+        for upg in self.game_state.upgrades:
+            uid = upg["id"]
+            if upg["purchased"] or self.game_state.can_unlock(uid):
+                reached_chapters.add(int(upg.get("chapter", 1)))
 
-        # 행(row)별로 노드 정리
-        rows = {}
-        for node in self.game_state.upgrades:
-            rows.setdefault(node["row"], []).append(node)
-        sorted_row_keys = sorted(rows.keys())
+        # 1. 모든 챕터 구분선은 표시하되, 챕터 정보 텍스트는 도달한 챕터만 표시
+        header_font = QFont("Malgun Gothic", 8, QFont.Weight.Bold)
+        painter.setFont(header_font)
+        for chap in sorted(self.chapter_rows.keys()):
+            start_row = self.chapter_rows[chap]
+            y_line = self.top_margin + (start_row - 1) * self.row_height - 10
 
-        # 2. 연결선(Edges) 및 마일스톤 구분 점선 그리기
-        pen_line = QPen(QColor("#1E1E1E"), 2)
-        painter.setPen(pen_line)
+            painter.setPen(QPen(QColor("#d0d7de"), 1, Qt.PenStyle.DashLine))
+            painter.drawLine(10, y_line, self.width() - 10, y_line)
 
-        for i in range(len(sorted_row_keys) - 1):
-            r1 = sorted_row_keys[i]
-            r2 = sorted_row_keys[i + 1]
-            nodes1 = rows[r1]
-            nodes2 = rows[r2]
+            if chap in reached_chapters:
+                painter.setPen(QPen(QColor("#57606a")))
+                title = self.CHAPTER_TITLES.get(chap, f"CHAPTER {chap}")
+                painter.drawText(14, y_line + 13, title)
 
-            # 다음 행에 story(마일스톤) 노드가 있으면 계획서 3.2절처럼 가로 점선 경계선 표시
-            if any(n["type"] == "story" for n in nodes2):
-                _, y1 = self.get_node_center(r1, 2)
-                _, y2 = self.get_node_center(r2, 2)
-                dash_y = int((y1 + y2) / 2)
-                pen_dash = QPen(QColor("#57606A"), 1.5, Qt.PenStyle.DashLine)
-                painter.setPen(pen_dash)
-                painter.drawLine(15, dash_y, self.width() - 15, dash_y)
-                painter.setPen(pen_line)
+        # 2. 트리 전체의 직교 연결선을 모두 렌더링
+        for upg in self.game_state.upgrades:
+            uid = upg["id"]
+            p_end = self.node_centers.get(uid)
+            if not p_end:
+                continue
 
-            for n1 in nodes1:
-                c1 = n1["col"]
-                x1, y1 = self.get_node_center(r1, c1)
-                bottom_y = y1 + self.node_height / 2
+            for req_id in upg["req"]:
+                p_start = self.node_centers.get(req_id)
+                req_node = next((u for u in self.game_state.upgrades if u["id"] == req_id), None)
+                if not p_start or not req_node:
+                    continue
 
-                for n2 in nodes2:
-                    c2 = n2["col"]
-                    # 연결 조건: 같은 열이거나, 중앙(2)과 양옆(1,3)이 이어질 때
-                    if c1 == c2 or {c1, c2} in [{1, 2}, {2, 3}]:
-                        x2, y2 = self.get_node_center(r2, c2)
-                        top_y = y2 - self.node_height / 2
-                        mid_y = (bottom_y + top_y) / 2
+                if req_node["purchased"] and upg["purchased"]:
+                    pen = QPen(QColor("#2da44e"), 2.5)
+                elif req_node["purchased"]:
+                    pen = QPen(QColor("#0969da"), 2.0)
+                else:
+                    pen = QPen(QColor("#afb8c1"), 1.5, Qt.PenStyle.DashLine)
 
-                        if abs(x1 - x2) < 1:
-                            painter.drawLine(int(x1), int(bottom_y), int(x2), int(top_y))
-                        else:
-                            painter.drawLine(int(x1), int(bottom_y), int(x1), int(mid_y))
-                            painter.drawLine(int(x1), int(mid_y), int(x2), int(mid_y))
-                            painter.drawLine(int(x2), int(mid_y), int(x2), int(top_y))
-
-        # 3. 노드 박스 및 텍스트 그리기
-        font_title = QFont("Malgun Gothic", 8, QFont.Weight.Bold)
-        font_sub = QFont("Malgun Gothic", 7)
-
-        for node in self.game_state.upgrades:
-            rect = self.get_node_rect(node["row"], node["col"])
-            is_unlocked = self.game_state.can_unlock(node["id"])
-            can_afford = is_unlocked and (self.game_state.tokens >= node["cost"])
-            is_hovered = (node["id"] == self.hovered_node_id)
-
-            # 테두리 스타일 결정
-            if node["purchased"]:
-                pen_border = QPen(QColor("#111111"), 2.5)
-            elif can_afford:
-                pen_border = QPen(QColor("#0969DA"), 2.5 if is_hovered else 2.0)
-            elif is_unlocked:
-                pen_border = QPen(QColor("#57606A"), 1.5, Qt.PenStyle.DashLine)
-            else:
-                pen_border = QPen(QColor("#8C959F"), 1.2)
-
-            painter.setPen(pen_border)
-            painter.setBrush(QBrush(self.get_node_color(node)))
-            painter.drawRoundedRect(rect, 4, 4)
-
-            # 노드 내부 텍스트 렌더링
-            if node["purchased"]:
-                painter.setPen(QColor("#111111"))
-                painter.setFont(font_title)
-                painter.drawText(rect.adjusted(2, 4, -2, -16), Qt.AlignmentFlag.AlignCenter, node["name"])
-                painter.setFont(font_sub)
-                painter.drawText(rect.adjusted(2, 22, -2, -2), Qt.AlignmentFlag.AlignCenter, "[완료]")
-            elif is_unlocked:
-                painter.setPen(QColor("#111111") if can_afford else QColor("#424A53"))
-                painter.setFont(font_title)
-                painter.drawText(rect.adjusted(2, 4, -2, -16), Qt.AlignmentFlag.AlignCenter, node["name"])
-                painter.setFont(font_sub)
-                cost_text = f"{format_number(node['cost'])} Tk"
-                painter.drawText(rect.adjusted(2, 22, -2, -2), Qt.AlignmentFlag.AlignCenter, cost_text)
-            else:
-                painter.setPen(QColor("#6E7781"))
-                painter.setFont(font_title)
-                painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, "???")
+                painter.setPen(pen)
+                mid_y = (p_start.y() + p_end.y()) // 2
+                painter.drawLine(p_start.x(), p_start.y(), p_start.x(), mid_y)
+                painter.drawLine(p_start.x(), mid_y, p_end.x(), mid_y)
+                painter.drawLine(p_end.x(), mid_y, p_end.x(), p_end.y())
 
 
 class UpgradeTreeWidget(QFrame):
-    """상단 Active | Passive 헤더와 스크롤 영역을 포함하는 우측 패널 컨테이너"""
-
     def __init__(self, game_state):
         super().__init__()
         self.game_state = game_state
-        self._init_ui()
+        self.setStyleSheet("UpgradeTreeWidget { background-color: #f6f8fa; border-left: 2px solid #d0d7de; }")
 
-    def _init_ui(self):
-        self.setStyleSheet("""
-            UpgradeTreeWidget {
-                background-color: #ffffff;
-                border-left: 2px solid #d0d7de;
-            }
-        """)
-        main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(0, 0, 0, 0)
-        main_layout.setSpacing(0)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
 
-        # 상단 Active | Passive 헤더
-        header = QWidget()
+        header = QLabel("UPGRADE TREE")
+        header.setAlignment(Qt.AlignmentFlag.AlignCenter)
         header.setFixedHeight(50)
-        header.setStyleSheet("background-color: #ffffff; border-bottom: 2px solid #d0d7de;")
-        header_layout = QHBoxLayout(header)
-        header_layout.setContentsMargins(0, 0, 0, 0)
-        header_layout.setSpacing(0)
+        header.setStyleSheet("""
+            background-color: #ffffff;
+            border-bottom: 2px solid #d0d7de;
+            font-size: 16px;
+            font-weight: bold;
+            color: #1f2328;
+        """)
+        layout.addWidget(header)
 
-        lbl_active = QLabel("Active")
-        lbl_active.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        lbl_active.setStyleSheet("font-weight: bold; font-size: 15px; border-right: 1px solid #d0d7de;")
-
-        lbl_passive = QLabel("Passive")
-        lbl_passive.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        lbl_passive.setStyleSheet("font-weight: bold; font-size: 15px;")
-
-        header_layout.addWidget(lbl_active)
-        header_layout.addWidget(lbl_passive)
-        main_layout.addWidget(header)
-
-        # 스크롤 가능한 QPainter 트리 캔버스
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setStyleSheet("border: none; background-color: #ffffff;")
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setStyleSheet("border: none; background-color: #f6f8fa;")
 
-        self.canvas = SkillTreeCanvas(self.game_state)
+        self.canvas = TreeCanvas(self.game_state)
         scroll.setWidget(self.canvas)
-        main_layout.addWidget(scroll)
+        layout.addWidget(scroll)
 
     def refresh_tree(self):
-        self.canvas.update()
+        self.canvas.update_node_states(scroll_to_next=False)

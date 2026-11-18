@@ -1,6 +1,6 @@
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
-    QLabel, QFrame, QPushButton, QMessageBox, QFileDialog
+    QLabel, QFrame, QPushButton, QMessageBox, QFileDialog, QDialog
 )
 from PyQt6.QtCore import Qt, QTimer, QPropertyAnimation, QParallelAnimationGroup, QPoint, QEasingCurve
 from PyQt6.QtGui import QFontMetrics
@@ -131,6 +131,72 @@ class MiniNewsTickerWidget(QWidget):
         self._anim_group = group
         group.start()
 
+# ui/main_window.py 상단에 추가할 스토리 이벤트 팝업 클래스
+class StoryEventDialog(QDialog):
+    """스토리 노드 해금 시 등장하는 챕터 스토리 연출 팝업 (1~15번 이벤트)"""
+
+    def __init__(self, story_data: dict, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(f"STORY EVENT #{story_data.get('number', '')} - {story_data.get('chapter', '')}")
+        self.setFixedSize(520, 310)
+        self.setStyleSheet("QDialog { background-color: #0d1117; border: 2px solid #8250df; }")
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(22, 18, 22, 18)
+        layout.setSpacing(12)
+
+        top_meta = QHBoxLayout()
+        lbl_chap = QLabel(f"◆ {story_data.get('chapter', 'STORY')}")
+        lbl_chap.setStyleSheet("color: #d2a8ff; font-size: 13px; font-weight: bold;")
+
+        lbl_role = QLabel(story_data.get("node_role", ""))
+        lbl_role.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        lbl_role.setStyleSheet("""
+            background-color: #21262d;
+            color: #79c0ff;
+            border: 1px solid #30363d;
+            border-radius: 4px;
+            padding: 2px 8px;
+            font-size: 11px;
+            font-weight: bold;
+        """)
+        top_meta.addWidget(lbl_chap)
+        top_meta.addStretch()
+        top_meta.addWidget(lbl_role)
+        layout.addLayout(top_meta)
+
+        lbl_title = QLabel(story_data.get("title", ""))
+        lbl_title.setWordWrap(True)
+        lbl_title.setStyleSheet("color: #ffffff; font-size: 16px; font-weight: bold;")
+        layout.addWidget(lbl_title)
+
+        line = QFrame()
+        line.setFrameShape(QFrame.Shape.HLine)
+        line.setStyleSheet("background-color: #30363d; max-height: 1px;")
+        layout.addWidget(line)
+
+        lbl_content = QLabel(story_data.get("content", ""))
+        lbl_content.setWordWrap(True)
+        lbl_content.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
+        lbl_content.setStyleSheet("color: #c9d1d9; font-size: 13px; line-height: 1.5;")
+        layout.addWidget(lbl_content, stretch=1)
+
+        btn_ok = QPushButton("계속 개발하기")
+        btn_ok.setFixedHeight(34)
+        btn_ok.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_ok.setStyleSheet("""
+            QPushButton {
+                background-color: #8250df;
+                color: #ffffff;
+                border: none;
+                border-radius: 5px;
+                font-size: 13px;
+                font-weight: bold;
+            }
+            QPushButton:hover { background-color: #6639ba; }
+        """)
+        btn_ok.clicked.connect(self.accept)
+        layout.addWidget(btn_ok)
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -340,10 +406,15 @@ class MainWindow(QMainWindow):
         self.tree_widget = UpgradeTreeWidget(self.game_state)
         root_layout.addWidget(self.tree_widget, stretch=28)
 
+    def _on_story_event_triggered(self, story_data: dict):
+        dlg = StoryEventDialog(story_data, self)
+        dlg.exec()
+
     def _connect_signals(self):
         self.game_state.state_changed.connect(self._update_ui)
         self.game_state.news_added.connect(self._on_news_added)
         self.game_state.unread_news_changed.connect(self._update_unread_badge)
+        self.game_state.story_event_triggered.connect(self._on_story_event_triggered)
 
     def _on_tick(self):
         self.game_state.add_passive_tokens(0.1)

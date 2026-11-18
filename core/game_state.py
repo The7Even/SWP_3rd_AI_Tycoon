@@ -1,3 +1,5 @@
+import os
+import json
 import copy
 import random
 from datetime import datetime, timedelta
@@ -9,6 +11,8 @@ class GameState(QObject):
     news_added = pyqtSignal(dict)
     unread_news_changed = pyqtSignal(int)
     command_tier_changed = pyqtSignal(int)
+    story_event_triggered = pyqtSignal(dict)
+    singularity_reached = pyqtSignal()
 
     RANDOM_NEWS_POOL = [
         {
@@ -33,92 +37,50 @@ class GameState(QObject):
         }
     ]
 
-    INITIAL_UPGRADES = [
+    FALLBACK_UPGRADES = [
         {
-            "id": "init_script",
+            "id": "ch1_start",
+            "chapter": 1,
             "row": 1, "col": 2,
-            "name": "기초 스크립트",
-            "type": "common",
-            "cost": 50,
-            "purchased": False,
-            "req": [],
-            "desc": "명령어당 토큰 +10"
-        },
-        {
-            "id": "tokenizer_opt",
-            "row": 2, "col": 2,
-            "name": "토크나이저",
-            "type": "common",
-            "cost": 150,
-            "purchased": False,
-            "req": ["init_script"],
-            "desc": "명령어당 토큰 +25, 쿨다운 감소, 명령어 티어 2 해금"
-        },
-        {
-            "id": "act_prompt_eng",
-            "row": 3, "col": 1,
-            "name": "프롬프트 튜닝",
-            "type": "active",
-            "cost": 400,
-            "purchased": False,
-            "req": ["tokenizer_opt"],
-            "desc": "명령어당 토큰 2배 증가"
-        },
-        {
-            "id": "pas_gpu_buy",
-            "row": 3, "col": 3,
-            "name": "RTX 3060 영입",
-            "type": "passive",
-            "cost": 400,
-            "purchased": False,
-            "req": ["tokenizer_opt"],
-            "desc": "초당 토큰 +20, GPU 업그레이드"
-        },
-        {
-            "id": "act_macro_v1",
-            "row": 4, "col": 1,
-            "name": "단축키 매크로",
-            "type": "active",
-            "cost": 800,
-            "purchased": False,
-            "req": ["act_prompt_eng"],
-            "desc": "입력 쿨다운 50ms 단축, 명령어 티어 3 해금"
-        },
-        {
-            "id": "pas_vram_expand",
-            "row": 4, "col": 3,
-            "name": "듀얼 GPU 구성",
-            "type": "passive",
-            "cost": 800,
-            "purchased": False,
-            "req": ["pas_gpu_buy"],
-            "desc": "초당 토큰 +45"
-        },
-        {
-            "id": "pre_milestone_sync",
-            "row": 5, "col": 2,
-            "name": "모델 가중치 병합",
-            "type": "common",
-            "cost": 1500,
-            "purchased": False,
-            "req": ["act_macro_v1", "pas_vram_expand"],
-            "desc": "전체 토큰 생산 효율 1.5배"
-        },
-        {
-            "id": "milestone_1",
-            "row": 6, "col": 2,
-            "name": "소형 LLM 배포",
+            "name": "AI 개발 착수",
             "type": "story",
-            "cost": 3000,
-            "purchased": False,
-            "req": ["pre_milestone_sync"],
-            "desc": "[마일스톤] 상용 API 개시, 명령어 티어 4 해금"
+            "cost": 30,
+            "req": [],
+            "desc": "[Chap 1 시작] 하드웨어 업그레이드 해금, 명령어당 토큰 +6",
+            "effects": {"cmd_add": 6, "bench_add": 100}
         }
     ]
 
-    def __init__(self):
+    def __init__(self, upgrades_path: str = os.path.join("data", "upgrades.json")):
         super().__init__()
+        self.upgrades_path = upgrades_path
+        self.base_upgrades = self._load_upgrades_from_json()
         self.reset_state(emit_signal=False)
+
+    def _load_upgrades_from_json(self) -> list[dict]:
+        """외부 JSON 파일(data/upgrades.json)에서 전체 노드 및 스토리 이벤트 데이터 로드"""
+        if not os.path.exists(self.upgrades_path):
+            return copy.deepcopy(self.FALLBACK_UPGRADES)
+
+        try:
+            with open(self.upgrades_path, "r", encoding="utf-8") as f:
+                raw = json.load(f)
+            items = raw.get("upgrades", []) if isinstance(raw, dict) else raw
+            if isinstance(items, list) and len(items) > 0:
+                valid = []
+                for it in items:
+                    if isinstance(it, dict) and it.get("id"):
+                        node = copy.deepcopy(it)
+                        node["purchased"] = False
+                        node.setdefault("req", [])
+                        node.setdefault("effects", {})
+                        node.setdefault("chapter", 1)
+                        valid.append(node)
+                if valid:
+                    return valid
+        except Exception:
+            pass
+        return copy.deepcopy(self.FALLBACK_UPGRADES)
 
     def reset_state(self, emit_signal: bool = True):
         """게임 상태를 초기값으로 리셋"""
@@ -157,18 +119,18 @@ class GameState(QObject):
 
         self.ai_activities = [
             {"name": "로컬 백그라운드 토큰 마이닝", "rate": "6 Tk/s", "status": "가동 중"},
-            {"name": "유료 API 베타 테스터 응답", "rate": "잠김 (소형 LLM 배포 후 해금)", "status": "대기"},
-            {"name": "자율 데이터 크롤링 및 정제 파이프라인", "rate": "잠김 (상용 서비스 후 해금)", "status": "대기"}
+            {"name": "유료 플레이어 구독 응답", "rate": "잠김 (Chap 5 AI 3.0 후 해금)", "status": "대기"},
+            {"name": "자체 프로젝트 자율 수행", "rate": "잠김 (Chap 6 AI 5.0 후 해금)", "status": "대기"}
         ]
 
         self.encyclopedia = [
             {"id": "col_hello_world", "name": "첫 번째 프롬프트", "desc": "로컬 환경에서 AI의 첫 응답을 받아냈다.", "unlocked": True},
             {"id": "col_rtx3060", "name": "가성비의 제왕 RTX 3060", "desc": "중고 그래픽카드를 영입해 본격적인 병렬 연산을 시작했다.", "unlocked": False},
-            {"id": "col_small_llm", "name": "나만의 소형 LLM", "desc": "수능 1등급 수준의 추론 능력을 갖춘 모델을 배포했다.", "unlocked": False},
+            {"id": "col_small_llm", "name": "나만의 AI 2.0", "desc": "대학생과 직장인들이 찾는 실용적인 모델로 도약했다.", "unlocked": False},
             {"id": "col_agi_spark", "name": "자아의 불꽃", "desc": "AI가 스스로 코드를 수정하기 시작한 흔적을 발견했다.", "unlocked": False}
         ]
 
-        self.upgrades = copy.deepcopy(self.INITIAL_UPGRADES)
+        self.upgrades = copy.deepcopy(self.base_upgrades)
 
         if emit_signal:
             self.state_changed.emit()
@@ -178,22 +140,19 @@ class GameState(QObject):
                 self.news_added.emit(self.news_history[0])
 
     def set_command_tier(self, tier: int):
-        """명령어 티어(1~4) 변경 및 콘솔 갱신 시그널 발송"""
         clamped = max(1, min(4, int(tier)))
         self.command_tier = clamped
         self.command_tier_changed.emit(self.command_tier)
         self.state_changed.emit()
 
     def clear_unread_news(self):
-        """뉴스 팝업 확인 시 안 읽은 뉴스 카운트 초기화"""
         if self.unread_news_count != 0:
             self.unread_news_count = 0
             self.unread_news_changed.emit(0)
 
     def to_dict(self) -> dict:
-        """현재 상태를 저장 가능한 딕셔너리로 직렬화"""
         return {
-            "version": 1,
+            "version": 2,
             "tokens": self.tokens,
             "tokens_per_command": self.tokens_per_command,
             "tokens_per_sec": self.tokens_per_sec,
@@ -209,7 +168,6 @@ class GameState(QObject):
         }
 
     def from_dict(self, data: dict):
-        """저장된 딕셔너리 데이터를 현재 상태에 복원"""
         self.reset_state(emit_signal=False)
 
         self.tokens = float(data.get("tokens", 0.0))
@@ -260,7 +218,6 @@ class GameState(QObject):
         if len(self.news_history) > 30:
             self.news_history.pop()
 
-        # 일반/악재 랜덤 뉴스는 안 읽은 카운트 증가, 마일스톤 뉴스는 즉시 팝업이므로 카운트 미증가
         if not is_milestone:
             self.unread_news_count += 1
             self.unread_news_changed.emit(self.unread_news_count)
@@ -305,59 +262,69 @@ class GameState(QObject):
 
         self.tokens -= target["cost"]
         target["purchased"] = True
-        self._apply_upgrade_effect(upgrade_id)
+        self._apply_upgrade_effects(target)
         self.state_changed.emit()
+
+        # 스토리 이벤트가 포함된 노드라면 스토리 팝업 시그널 발송
+        if isinstance(target.get("story_event"), dict):
+            self.story_event_triggered.emit(target["story_event"])
+
         return True
 
-    def _apply_upgrade_effect(self, upgrade_id: str):
-        if upgrade_id == "init_script":
-            self.tokens_per_command += 10
-            self.specs["BENCH_SCORE"] += 150
-        elif upgrade_id == "tokenizer_opt":
-            self.tokens_per_command += 25
-            self.input_cooldown_ms = 120
-            self.specs["BENCH_SCORE"] += 400
-            if self.command_tier < 2:
-                self.set_command_tier(2)
-        elif upgrade_id == "act_prompt_eng":
-            self.tokens_per_command *= 2
-            self.specs["BENCH_SCORE"] += 1200
-        elif upgrade_id == "pas_gpu_buy":
-            self.tokens_per_sec += 20
-            self.specs["GPU"] = "RTX 3060 12GB"
-            self.specs["BENCH_SCORE"] += 2500
-            self.unlock_encyclopedia("col_rtx3060")
-            self.ai_activities[0]["rate"] = f"{int(self.tokens_per_sec)} Tk/s"
-        elif upgrade_id == "act_macro_v1":
-            self.input_cooldown_ms = 50
-            self.tokens_per_command += 50
-            self.specs["BENCH_SCORE"] += 3000
-            if self.command_tier < 3:
-                self.set_command_tier(3)
-        elif upgrade_id == "pas_vram_expand":
-            self.tokens_per_sec += 45
-            self.specs["GPU"] = "Dual RTX 3060 (NVLink)"
-            self.specs["BENCH_SCORE"] += 4500
-            self.ai_activities[0]["rate"] = f"{int(self.tokens_per_sec)} Tk/s"
-        elif upgrade_id == "pre_milestone_sync":
-            self.tokens_per_command *= 1.5
-            self.tokens_per_sec *= 1.5
-            self.specs["RAM"] = "DDR5 64GB"
-            self.specs["BENCH_SCORE"] += 8000
-            self.ai_activities[0]["rate"] = f"{int(self.tokens_per_sec)} Tk/s"
-        elif upgrade_id == "milestone_1":
-            self.tokens_per_sec += 150
-            self.specs["CPU"] = "Ryzen 9 7950X"
-            self.specs["GPU"] = "RTX 4090 24GB"
-            self.specs["BENCH_SCORE"] += 25000
-            self.unlock_encyclopedia("col_small_llm")
-            if self.command_tier < 4:
-                self.set_command_tier(4)
-            self.ai_activities[0]["rate"] = f"{int(self.tokens_per_sec)} Tk/s"
-            self.ai_activities[1] = {"name": "유료 API 베타 테스터 응답", "rate": "150 Tk/s", "status": "가동 중"}
-            self.push_news(
-                "OO, 개인 개발 AI 최초 수능 1등급 달성",
-                "최근 1인 개발로 탄생한 AI 모델 OO이 모의 수능 전 과목 1등급을 달성하며 학계와 산업계의 이목을 끌었다...",
-                category="story",
-                is_milestone=True
-            )
+    def _apply_upgrade_effects(self, node: dict):
+        """JSON의 effects 딕셔너리를 해석해 능력치, 하드웨어 스펙, 해금 요소를 반영"""
+        fx = node.get("effects", {})
+        if not isinstance(fx, dict):
+            return
+
+        if "cmd_add" in fx:
+            self.tokens_per_command += float(fx["cmd_add"])
+        if "cmd_mul" in fx:
+            self.tokens_per_command *= float(fx["cmd_mul"])
+
+        if "sec_add" in fx:
+            self.tokens_per_sec += float(fx["sec_add"])
+        if "sec_mul" in fx:
+            self.tokens_per_sec *= float(fx["sec_mul"])
+
+        if "cooldown_add" in fx:
+            self.input_cooldown_ms = max(10, self.input_cooldown_ms + int(fx["cooldown_add"]))
+
+        if "bench_add" in fx:
+            self.specs["BENCH_SCORE"] += float(fx["bench_add"])
+
+        if "spec_cpu" in fx:
+            self.specs["CPU"] = str(fx["spec_cpu"])
+        if "spec_gpu" in fx:
+            self.specs["GPU"] = str(fx["spec_gpu"])
+        if "spec_ram" in fx:
+            self.specs["RAM"] = str(fx["spec_ram"])
+        if "spec_storage" in fx:
+            self.specs["STORAGE"] = str(fx["spec_storage"])
+
+        if "unlock_dex" in fx:
+            self.unlock_encyclopedia(str(fx["unlock_dex"]))
+
+        if "tier_min" in fx:
+            target_tier = int(fx["tier_min"])
+            if self.command_tier < target_tier:
+                self.set_command_tier(target_tier)
+
+        if "unlock_activity" in fx and isinstance(fx["unlock_activity"], dict):
+            act_info = fx["unlock_activity"]
+            idx = int(act_info.get("index", 1))
+            bonus_sec = float(act_info.get("bonus_sec", 0.0))
+            if bonus_sec > 0:
+                self.tokens_per_sec += bonus_sec
+            if 0 <= idx < len(self.ai_activities):
+                self.ai_activities[idx] = {
+                    "name": act_info.get("name", self.ai_activities[idx]["name"]),
+                    "rate": act_info.get("rate", "가동 중"),
+                    "status": act_info.get("status", "가동 중")
+                }
+
+        if self.ai_activities:
+            self.ai_activities[0]["rate"] = f"{int(self.tokens_per_sec):,} Tk/s"
+
+        if fx.get("trigger_singularity"):
+            self.singularity_reached.emit()
