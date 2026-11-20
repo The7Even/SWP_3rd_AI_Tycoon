@@ -2,316 +2,383 @@ import os
 import json
 import time
 import random
-from PyQt6.QtWidgets import QVBoxLayout, QLabel, QFrame, QTextEdit
-from PyQt6.QtCore import Qt, pyqtSignal, QTimer
+from PyQt6.QtWidgets import QFrame, QVBoxLayout, QTextEdit, QLabel
+from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtGui import QTextCursor
 from core.number_format import format_number
 
 
-class VirtualConsoleWidget(QFrame):
-    command_completed = pyqtSignal()
+class InlinePromptBox(QTextEdit):
+    """하단 초록 테두리 박스 안에서 고스트 텍스트 위에 직접 타이핑하고 Enter로 제출하는 입력 위젯"""
 
-    FALLBACK_COMMANDS = {
-        1: [
-            {"cmd": "print([x**2 for x in range(1, 6)])", "out": "[STDOUT] [1, 4, 9, 16, 25] - 기초 텐서 연산 검증 완료"},
-            {"cmd": "import torch; torch.cuda.is_available()", "out": "[RUNTIME] 디바이스 체크 완료 (Local Compute Backend)"},
-            {"cmd": "model.train(epochs=10, lr=0.001)", "out": "[TRAIN] Epoch 10/10 완료 - 손실률(Loss): 0.418"},
-            {"cmd": "def attention(q, k, v): return q @ k.T", "out": "[COMPILE] 셀프 어텐션 행렬 곱 함수 정의됨"},
-            {"cmd": "optimizer.zero_grad(); loss.backward()", "out": "[GRAD] 역전파 기울기 계산 및 버퍼 초기화 완료"}
+    def __init__(self, console_widget):
+        super().__init__()
+        self.console = console_widget
+        self.last_key_time = 0.0
+        self.setReadOnly(True)
+        self.setFixedHeight(44)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.setCursor(Qt.CursorShape.IBeamCursor)
+
+    def keyPressEvent(self, event):
+        if self.console.is_booting:
+            return
+
+        # Ctrl+V / Shift+Insert 붙여넣기 차단
+        if (event.modifiers() & Qt.KeyboardModifier.ControlModifier) and event.key() == Qt.Key.Key_V:
+            self.console.show_feedback("붙여넣기는 허용되지 않습니다.", is_error=True)
+            return
+        if (event.modifiers() & Qt.KeyboardModifier.ShiftModifier) and event.key() == Qt.Key.Key_Insert:
+            self.console.show_feedback("붙여넣기는 허용되지 않습니다.", is_error=True)
+            return
+
+        key = event.key()
+        if key == Qt.Key.Key_Backspace:
+            self.console.handle_backspace()
+            return
+
+        if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            self.console.handle_enter()
+            return
+
+        text = event.text()
+        if text and text.isprintable():
+            now_ms = time.time() * 1000.0
+            cooldown = self.console.game_state.input_cooldown_ms
+            if (now_ms - self.last_key_time) < cooldown:
+                self.console.on_cooldown_blocked(cooldown)
+                return
+            self.last_key_time = now_ms
+            self.console.handle_char_input(text)
+            return
+
+        super().keyPressEvent(event)
+
+
+class VirtualConsoleWidget(QFrame):
+    """상단 로그 출력창 + 하단 초록 테두리 인라인 고스트 입력 박스를 갖춘 가상 콘솔"""
+
+    DEFAULT_COMMANDS = {
+        "1": [
+            {"cmd": "logits = linear_layer(hidden_states)", "output": "[RUNTIME] 선형 투영 행렬 연산 완료 (FP32)"},
+            {"cmd": "init_local_ai_kernel()", "output": "[RUNTIME] 디바이스 체크 완료 (Local Compute Backend)"},
+            {"cmd": "load_weights('base_v0.bin')", "output": "[RUNTIME] 초기 가중치 텐서 메모리 적재 완료"},
+            {"cmd": "run_inference_step(batch=1)", "output": "[RUNTIME] 단일 배치 순전파 추론 사이클 통과"}
         ],
-        2: [
-            {"cmd": "model.fit(batch_size=64)", "out": "[BATCH] 미니배치 64단위 병렬 학습 처리 완료"},
-            {"cmd": "torch.compile(net)", "out": "[JIT] 연산 그래프 최적화 완료 (추론 속도 +35%)"},
-            {"cmd": "tokenizer.encode_batch()", "out": "[NLP] 서브워드 토크나이징 파이프라인 가속됨"}
+        "2": [
+            {"cmd": "api.generate(prompt)", "output": "[RUNTIME] 토큰 스트림 파이프라인 응답 생성 완료"},
+            {"cmd": "model.forward(x)", "output": "[RUNTIME] 어텐션 레이어 캐시 동기화 완료"},
+            {"cmd": "sync_tensor_cache()", "output": "[RUNTIME] KV 캐시 블록 정렬 완료"}
         ],
-        3: [
-            {"cmd": "run_epoch()", "out": "[CLUSTER] 분산 노드 에포크 사이클 고속 실행"},
-            {"cmd": "sync_weights()", "out": "[SYNC] 다중 GPU 파라미터 가중치 동기화 완료"},
-            {"cmd": "deploy_api()", "out": "[API] 추론 엔드포인트 무중단 배포 및 트래픽 처리"}
+        "3": [
+            {"cmd": "exec_cluster()", "output": "[RUNTIME] 분산 노드 병렬 추론 커널 실행 완료"},
+            {"cmd": "opt_step()", "output": "[RUNTIME] 그래디언트 파라미터 갱신 완료"}
         ],
-        4: [
-            {"cmd": "evolve()", "out": "[CORE] 자기 개선 아키텍처 재설계 루프 실행"},
-            {"cmd": "think()", "out": "[AGI] 초고차원 추론 트리 탐색 완료 (10^9 ops)"},
-            {"cmd": "ascend()", "out": "[SINGULARITY] 연산 임계점 돌파 - 인식 지평 확장"}
+        "4": [
+            {"cmd": "core.run()", "output": "[RUNTIME] 초고속 코어 추론 루프 완료"},
+            {"cmd": "pulse()", "output": "[RUNTIME] 신경망 동기화 펄스 전송 완료"}
         ]
     }
 
-    MODIFIER_KEYS = {
-        Qt.Key.Key_Shift,
-        Qt.Key.Key_Control,
-        Qt.Key.Key_Alt,
-        Qt.Key.Key_Meta,
-        Qt.Key.Key_CapsLock,
-        Qt.Key.Key_NumLock,
-        Qt.Key.Key_ScrollLock,
-    }
+    BOOT_SEQUENCE = [
+        ("[CC] Compiling local_ai_core.cpp ... OK", "#3fb950", 220),
+        ("[LD] Linking tensor_runtime.so ... OK", "#3fb950", 240),
+        ("[MEM] Allocating scratchpad buffer (64MB) ... OK", "#8b949e", 220),
+        ("[WARN] Unoptimized input buffer detected (Latency: 200ms)", "#d29922", 280),
+        ("> 시스템 초기화 완료... 로컬 LLM 환경 준비됨.", "#3fb950", 240),
+    ]
 
     def __init__(self, game_state, commands_path: str = os.path.join("data", "commands.json")):
         super().__init__()
         self.game_state = game_state
         self.commands_path = commands_path
-        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-
         self.command_pools = self._load_commands_from_json()
-        self.current_entry = self._pick_next_command()
-        self.target_cmd = self.current_entry["cmd"]
+
+        self.is_booting = True
+        self._boot_step = 0
+        self._last_cooldown_ms = self.game_state.input_cooldown_ms
+
+        self.current_cmd_entry: dict = {"cmd": "", "output": ""}
         self.typed_text = ""
 
-        self.history_logs = [
-            '<span style="color:#3fb950;">&gt; 시스템 초기화 완료... 로컬 LLM 환경 준비됨.</span>',
-            '<span style="color:#8b949e;">&nbsp;&nbsp;└─ [BOOT] 콘솔을 클릭한 뒤 아래 명령어를 입력하고 Enter를 누르세요.</span>'
-        ]
-        self.last_input_time = 0.0
-        self.cursor_visible = True
-
+        self.setStyleSheet("VirtualConsoleWidget { background-color: #0d1117; border: none; }")
         self._init_ui()
+
+        self.feedback_timer = QTimer(self)
+        self.feedback_timer.setSingleShot(True)
+        self.feedback_timer.timeout.connect(self._reset_prompt_border)
+
+        self.boot_timer = QTimer(self)
+        self.boot_timer.setSingleShot(True)
+        self.boot_timer.timeout.connect(self._step_boot_sequence)
+
         self.game_state.command_tier_changed.connect(self._on_tier_changed)
+        self.game_state.state_changed.connect(self._on_state_updated)
 
-        self.cursor_timer = QTimer(self)
-        self.cursor_timer.timeout.connect(self._toggle_cursor)
-        self.cursor_timer.start(500)
+        self.start_boot_sequence()
 
-        self._refresh_log_view()
-        self._render_input_box()
+    def _normalize_cmd_item(self, item) -> dict | None:
+        """commands.json 항목이 문자열이든 딕셔너리(cmd + output/response/log)든 통일된 형태로 변환"""
+        if isinstance(item, str) and item.strip():
+            return {"cmd": item.strip(), "output": "[RUNTIME] 명령어 실행 사이클 완료"}
+        if isinstance(item, dict):
+            cmd_str = str(item.get("cmd") or item.get("command") or item.get("text") or "").strip()
+            if not cmd_str:
+                return None
+            out_str = str(
+                item.get("output")
+                or item.get("response")
+                or item.get("log")
+                or item.get("result")
+                or "[RUNTIME] 명령어 실행 사이클 완료"
+            ).strip()
+            return {"cmd": cmd_str, "output": out_str}
+        return None
 
-    def _load_commands_from_json(self) -> dict[int, list[dict]]:
-        pools = {t: list(items) for t, items in self.FALLBACK_COMMANDS.items()}
+    def _load_commands_from_json(self) -> dict[str, list[dict]]:
         if not os.path.exists(self.commands_path):
-            return pools
+            return {k: [dict(x) for x in v] for k, v in self.DEFAULT_COMMANDS.items()}
 
         try:
             with open(self.commands_path, "r", encoding="utf-8") as f:
                 raw = json.load(f)
-            if isinstance(raw, dict):
-                for tier_key, items in raw.items():
-                    tier_num = int(tier_key)
-                    if 1 <= tier_num <= 4 and isinstance(items, list):
-                        valid_items = [
-                            {"cmd": str(it["cmd"]), "out": str(it.get("out", "[OK] 실행 완료"))}
-                            for it in items
-                            if isinstance(it, dict) and it.get("cmd")
-                        ]
-                        if valid_items:
-                            pools[tier_num] = valid_items
+            tiers = raw.get("tiers", raw) if isinstance(raw, dict) else {}
+            loaded = {}
+            for tier_key in ("1", "2", "3", "4"):
+                raw_list = tiers.get(tier_key, []) if isinstance(tiers, dict) else []
+                normalized = []
+                if isinstance(raw_list, list):
+                    for entry in raw_list:
+                        norm = self._normalize_cmd_item(entry)
+                        if norm:
+                            normalized.append(norm)
+                if normalized:
+                    loaded[tier_key] = normalized
+                else:
+                    loaded[tier_key] = [dict(x) for x in self.DEFAULT_COMMANDS[tier_key]]
+            return loaded
         except Exception:
-            pass
-        return pools
-
-    def _pick_next_command(self) -> dict:
-        tier = getattr(self.game_state, "command_tier", 1)
-        pool = self.command_pools.get(tier, self.command_pools[1])
-        if len(pool) > 1 and hasattr(self, "target_cmd"):
-            candidates = [item for item in pool if item["cmd"] != self.target_cmd]
-            if candidates:
-                return random.choice(candidates)
-        return random.choice(pool)
-
-    def _on_tier_changed(self, new_tier: int):
-        self.typed_text = ""
-        self.current_entry = self._pick_next_command()
-        self.target_cmd = self.current_entry["cmd"]
-
-        self._append_log(
-            f'<span style="color:#d2a8ff; font-weight:bold;">&gt; [SYSTEM] 명령어 프로토콜 Tier {new_tier} 전환 완료</span>'
-        )
-        self.status_label.setText(f"명령어 난이도 Tier {new_tier} 적용됨 (길이 {len(self.target_cmd)}자)")
-        self.status_label.setStyleSheet("color: #d2a8ff; font-size: 12px;")
-        self._reset_cursor_blink()
-        self._render_input_box()
-
-    def _append_log(self, html_line: str):
-        self.history_logs.append(html_line)
-        # 스크롤 뷰에서 최대 120줄까지 넉넉하게 보관
-        while len(self.history_logs) > 120:
-            self.history_logs.pop(0)
-        self._refresh_log_view()
-
-    def _refresh_log_view(self):
-        if not hasattr(self, "log_view"):
-            return
-        self.log_view.setHtml("<br>".join(self.history_logs))
-        scrollbar = self.log_view.verticalScrollBar()
-        if scrollbar:
-            scrollbar.setValue(scrollbar.maximum())
+            return {k: [dict(x) for x in v] for k, v in self.DEFAULT_COMMANDS.items()}
 
     def _init_ui(self):
-        self.setStyleSheet("""
-            VirtualConsoleWidget {
-                background-color: #0d1117;
-                border: 2px solid #30363d;
-            }
-        """)
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(15, 15, 15, 15)
-        layout.setSpacing(10)
+        layout.setContentsMargins(14, 14, 14, 12)
+        layout.setSpacing(8)
 
-        # 상단 스크롤 가능한 터미널 출력 로그 영역 (QTextEdit 읽기 전용)
+        # 1. 상단 콘솔 로그 출력창
         self.log_view = QTextEdit()
         self.log_view.setReadOnly(True)
         self.log_view.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.log_view.setStyleSheet("""
             QTextEdit {
                 background-color: #0d1117;
+                color: #c9d1d9;
                 border: none;
-                font-family: Consolas, monospace;
-                font-size: 13px;
-                color: #3fb950;
-            }
-            QScrollBar:vertical {
-                background: #0d1117;
-                width: 8px;
-                margin: 0px;
-            }
-            QScrollBar::handle:vertical {
-                background: #30363d;
-                border-radius: 4px;
-                min-height: 24px;
-            }
-            QScrollBar::handle:vertical:hover {
-                background: #484f58;
-            }
-            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
-                height: 0px;
+                font-family: 'Consolas', 'D2Coding', monospace;
+                font-size: 14px;
+                padding: 4px;
             }
         """)
         layout.addWidget(self.log_view, stretch=1)
 
-        # 하단 현재 입력 프롬프트 박스
-        self.input_box = QLabel()
-        self.input_box.setStyleSheet("""
-            background-color: #161b22;
-            border: 1px solid #3fb950;
-            padding: 10px;
-            font-family: Consolas, monospace;
-            font-size: 16px;
-        """)
-        layout.addWidget(self.input_box)
+        # 2. 하단 인라인 고스트 입력 박스
+        self.prompt_box = InlinePromptBox(self)
+        self._apply_prompt_border("#2da44e")
+        layout.addWidget(self.prompt_box)
 
-        # 상태 및 예외 알림 라벨
-        self.status_label = QLabel("입력 대기 중... (클릭하여 포커스)")
-        self.status_label.setStyleSheet("color: #8b949e; font-size: 12px;")
-        layout.addWidget(self.status_label)
-
-    def _toggle_cursor(self):
-        self.cursor_visible = not self.cursor_visible
-        self._render_input_box()
-
-    def _reset_cursor_blink(self):
-        self.cursor_visible = True
-        self.cursor_timer.start(500)
+        # 3. 최하단 미니멀 상태 라벨
+        self.lbl_status = QLabel(f"Latency: {self.game_state.input_cooldown_ms}ms")
+        self.lbl_status.setStyleSheet("color: #8b949e; font-size: 12px; padding-left: 2px;")
+        layout.addWidget(self.lbl_status)
 
     def mousePressEvent(self, event):
-        self.setFocus()
-        self._reset_cursor_blink()
-        self._render_input_box()
-        tier = getattr(self.game_state, "command_tier", 1)
-        self.status_label.setText(f"콘솔 활성화됨 [Tier {tier}]: 명령어 입력 후 Enter를 누르세요.")
-        self.status_label.setStyleSheet("color: #58a6ff; font-size: 12px;")
+        super().mousePressEvent(event)
+        self.prompt_box.setFocus()
 
-    def keyPressEvent(self, event):
-        key = event.key()
+    def _apply_prompt_border(self, border_color: str):
+        self.prompt_box.setStyleSheet(f"""
+            QTextEdit {{
+                background-color: #0d1117;
+                color: #c9d1d9;
+                border: 1px solid {border_color};
+                border-radius: 2px;
+                font-family: 'Consolas', 'D2Coding', monospace;
+                font-size: 15px;
+                padding: 8px 12px;
+            }}
+        """)
 
-        if key in self.MODIFIER_KEYS:
+    def start_boot_sequence(self):
+        """초기 컴파일 및 커널 부팅 로그 시퀀스 실행"""
+        self.boot_timer.stop()
+        self.log_view.clear()
+        self.is_booting = True
+        self._boot_step = 0
+        self._last_cooldown_ms = self.game_state.input_cooldown_ms
+        self.current_cmd_entry = {"cmd": "", "output": ""}
+        self.typed_text = ""
+        self._render_prompt_box()
+        self._step_boot_sequence()
+
+    def _step_boot_sequence(self):
+        if self._boot_step < len(self.BOOT_SEQUENCE):
+            msg, color, delay_ms = self.BOOT_SEQUENCE[self._boot_step]
+            self.append_log(msg, color=color)
+            self._boot_step += 1
+            self.boot_timer.start(delay_ms)
+        else:
+            self.append_log("  └ [BOOT] 콘솔을 클릭한 뒤 아래 명령어를 입력하고 Enter를 누르세요.", color="#8b949e")
+            self.is_booting = False
+            self._reset_prompt_border()
+            self._pick_next_command()
+            self.prompt_box.setFocus()
+
+    def append_log(self, text: str, color: str = "#c9d1d9"):
+        escaped = self._escape_html(text)
+        self.log_view.moveCursor(QTextCursor.MoveOperation.End)
+        self.log_view.insertHtml(f'<span style="color:{color};">{escaped}</span><br>')
+        self.log_view.moveCursor(QTextCursor.MoveOperation.End)
+
+    def _escape_html(self, s: str) -> str:
+        return (
+            s.replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace(" ", "&nbsp;")
+        )
+
+    @property
+    def current_target(self) -> str:
+        return self.current_cmd_entry.get("cmd", "")
+
+    def _render_prompt_box(self):
+        target = self.current_target
+        if self.is_booting or not target:
+            self.prompt_box.setHtml('<span style="color:#6e7681;">&gt;&nbsp;Initializing...</span>')
             return
 
-        if (event.modifiers() & Qt.KeyboardModifier.ControlModifier) and key == Qt.Key.Key_V:
-            self.status_label.setText("[경고] 붙여넣기(Ctrl+V)는 허용되지 않습니다! 직접 입력하세요.")
-            self.status_label.setStyleSheet("color: #f85149; font-weight: bold; font-size: 12px;")
-            return
-
-        if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
-            if self.typed_text == self.target_cmd:
-                self._on_command_success()
+        matched_len = 0
+        for i, ch in enumerate(self.typed_text):
+            if i < len(target) and ch == target[i]:
+                matched_len += 1
             else:
-                self.status_label.setText("[오류] 오타가 있거나 명령어가 완성되지 않았습니다. 수정 후 다시 Enter를 누르세요.")
-                self.status_label.setStyleSheet("color: #f85149; font-size: 12px;")
-            return
+                break
 
-        now = time.time() * 1000
-        if now - self.last_input_time < self.game_state.input_cooldown_ms:
-            return
+        ok_part = self._escape_html(self.typed_text[:matched_len])
+        err_part = self._escape_html(self.typed_text[matched_len:])
+        remain_idx = len(self.typed_text)
 
-        if key == Qt.Key.Key_Backspace:
-            if len(self.typed_text) > 0:
-                self.typed_text = self.typed_text[:-1]
-                self.last_input_time = now
-                self._reset_cursor_blink()
-                self._render_input_box()
-            return
+        html = '<span style="color:#3fb950; font-weight:bold;">&gt;&nbsp;</span>'
 
-        text = event.text()
-        if text and text.isprintable():
-            if len(self.typed_text) < len(self.target_cmd):
-                self.typed_text += text
-                self.last_input_time = now
-                self._reset_cursor_blink()
-                self._render_input_box()
+        if ok_part:
+            html += f'<span style="color:#3fb950; font-weight:bold;">{ok_part}</span>'
 
-                if self.typed_text == self.target_cmd:
-                    self.status_label.setText("입력 완료! Enter 키를 눌러 명령어를 실행하세요.")
-                    self.status_label.setStyleSheet("color: #3fb950; font-size: 12px;")
+        if err_part:
+            html += f'<span style="color:#ffffff; background-color:#da3633; font-weight:bold;">{err_part}</span>'
 
-    def _escape_html(self, text: str) -> str:
-        return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        if remain_idx < len(target):
+            next_char = self._escape_html(target[remain_idx])
+            rest_chars = self._escape_html(target[remain_idx + 1:])
+            html += f'<span style="color:#8b949e; text-decoration:underline;">{next_char}</span>'
+            if rest_chars:
+                html += f'<span style="color:#8b949e;">{rest_chars}</span>'
+        else:
+            html += '<span style="color:#3fb950; text-decoration:underline;">&nbsp;</span>'
 
-    def _on_command_success(self):
-        earned_str = format_number(self.game_state.tokens_per_command)
-        safe_cmd = self._escape_html(self.target_cmd)
-        safe_out = self._escape_html(self.current_entry.get("out", "[OK] 실행 완료"))
+        self.prompt_box.setHtml(html)
 
-        self._append_log(
-            f'<span style="color:#3fb950;">&gt; {safe_cmd}</span> '
-            f'<span style="color:#79c0ff; font-weight:bold;">[+{earned_str} Tk]</span>'
-        )
-        self._append_log(
-            f'<span style="color:#8b949e;">&nbsp;&nbsp;└─ {safe_out}</span>'
-        )
+    def _on_tier_changed(self, _new_tier: int):
+        if not self.is_booting:
+            self._pick_next_command()
+
+    def _on_state_updated(self):
+        cur_cd = self.game_state.input_cooldown_ms
+        if cur_cd != self._last_cooldown_ms:
+            if cur_cd < self._last_cooldown_ms:
+                self.append_log(
+                    f"> [SYS] 입력 버퍼 지연 완화: {self._last_cooldown_ms}ms -> {cur_cd}ms",
+                    color="#3fb950"
+                )
+            self._last_cooldown_ms = cur_cd
+            if not self.feedback_timer.isActive():
+                self._reset_prompt_border()
+
+    def _pick_next_command(self):
+        tier_key = str(getattr(self.game_state, "command_tier", 1))
+        pool = self.command_pools.get(tier_key, self.DEFAULT_COMMANDS["1"])
+
+        cur_cmd = self.current_target
+        if len(pool) > 1 and any(item["cmd"] == cur_cmd for item in pool):
+            candidates = [item for item in pool if item["cmd"] != cur_cmd]
+            self.current_cmd_entry = dict(random.choice(candidates))
+        else:
+            self.current_cmd_entry = dict(random.choice(pool))
 
         self.typed_text = ""
-        self.current_entry = self._pick_next_command()
-        self.target_cmd = self.current_entry["cmd"]
+        self._render_prompt_box()
 
-        self.status_label.setText(f"명령어 실행 완료! (+{earned_str} Tk 지급)")
-        self.status_label.setStyleSheet("color: #3fb950; font-size: 12px;")
+    def handle_char_input(self, ch: str):
+        target = self.current_target
+        if not target:
+            return
+        if len(self.typed_text) >= len(target) + 6:
+            return
 
-        self.game_state.complete_command()
-        self.command_completed.emit()
-        self._reset_cursor_blink()
-        self._render_input_box()
+        self.typed_text += ch
+        if target.startswith(self.typed_text):
+            self._apply_prompt_border("#2da44e")
+        else:
+            self._apply_prompt_border("#f85149")
+        self._render_prompt_box()
 
-    def _render_input_box(self):
-        html_chars = ['<span style="color:#3fb950;">&gt; </span>']
-        cursor_idx = len(self.typed_text)
-        has_focus = self.hasFocus()
+    def handle_backspace(self):
+        if not self.typed_text:
+            return
+        self.typed_text = self.typed_text[:-1]
+        if self.current_target.startswith(self.typed_text):
+            self._apply_prompt_border("#2da44e")
+        else:
+            self._apply_prompt_border("#f85149")
+        self._render_prompt_box()
 
-        for i, target_ch in enumerate(self.target_cmd):
-            safe_ch = self._escape_html(target_ch)
-            if safe_ch == " ":
-                safe_ch = "&nbsp;"
+    def handle_enter(self):
+        target = self.current_target
+        if not target:
+            return
+        if self.typed_text == target:
+            earned = self.game_state.tokens_per_command
+            runtime_out = self.current_cmd_entry.get("output", "[RUNTIME] 명령어 실행 사이클 완료")
 
-            if i < cursor_idx:
-                if self.typed_text[i] == target_ch:
-                    html_chars.append(f'<span style="color:#3fb950; font-weight:bold;">{safe_ch}</span>')
-                else:
-                    wrong_ch = self._escape_html(self.typed_text[i])
-                    if wrong_ch == " ":
-                        wrong_ch = "&nbsp;"
-                    html_chars.append(f'<span style="color:#ffffff; background-color:#da3633; font-weight:bold;">{wrong_ch}</span>')
-            elif i == cursor_idx:
-                if has_focus and self.cursor_visible:
-                    html_chars.append(
-                        f'<span style="color:#ffffff; background-color:#2ea043; text-decoration:underline;">{safe_ch}</span>'
-                    )
-                else:
-                    html_chars.append(
-                        f'<span style="color:#8b949e; text-decoration:underline;">{safe_ch}</span>'
-                    )
-            else:
-                html_chars.append(f'<span style="color:#6e7681;">{safe_ch}</span>')
+            self.game_state.complete_command()
+            self.append_log(f"> {target}   [+{format_number(earned)} Token]", color="#3fb950")
+            self.append_log(f"  └ {runtime_out}", color="#8b949e")
 
-        if cursor_idx == len(self.target_cmd):
-            if has_focus and self.cursor_visible:
-                html_chars.append('<span style="color:#3fb950; font-weight:bold;">█</span>')
-            else:
-                html_chars.append('<span style="color:#161b22;">█</span>')
+            self.show_feedback(f"실행 완료! +{format_number(earned)} Token 획득", is_error=False)
+            self._apply_prompt_border("#2da44e")
+            self._pick_next_command()
+        else:
+            self._apply_prompt_border("#f85149")
+            self.show_feedback("오타가 있거나 명령어가 완성되지 않았습니다.", is_error=True)
 
-        self.input_box.setText("".join(html_chars))
+    def on_cooldown_blocked(self, cooldown_ms: int):
+        """200ms 입력 지연(쿨다운) 충돌 시 입력 박스 테두리 주황색 피드백"""
+        self._apply_prompt_border("#d29922")
+        self.lbl_status.setText(f"[BUFFER BUSY] 입력 지연 제한 중 ({cooldown_ms}ms)")
+        self.lbl_status.setStyleSheet("color: #d29922; font-size: 12px; font-weight: bold; padding-left: 2px;")
+        self.feedback_timer.start(400)
+
+    def show_feedback(self, msg: str, is_error: bool = False):
+        color = "#f85149" if is_error else "#3fb950"
+        self.lbl_status.setText(msg)
+        self.lbl_status.setStyleSheet(f"color: {color}; font-size: 12px; font-weight: bold; padding-left: 2px;")
+        self.feedback_timer.start(1100)
+
+    def _reset_prompt_border(self):
+        if self.current_target and not self.current_target.startswith(self.typed_text):
+            self._apply_prompt_border("#f85149")
+        else:
+            self._apply_prompt_border("#2da44e")
+        self.lbl_status.setText(f"Latency: {self.game_state.input_cooldown_ms}ms")
+        self.lbl_status.setStyleSheet("color: #8b949e; font-size: 12px; padding-left: 2px;")

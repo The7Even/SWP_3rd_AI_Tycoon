@@ -80,7 +80,7 @@ class StoryEventDialog(QDialog):
 
 
 class MiniNewsTickerWidget(QWidget):
-    """새 뉴스 도착 시 기존 카드는 아래로 밀려나고 새 카드가 오른쪽에서 슬라이드 인 되는 미니 패널"""
+    """튜토리얼 중에는 DEV GUIDE 카드를, 본편 진입 후에는 슬라이드 인 NEWS 카드를 표시하는 미니 패널"""
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -101,6 +101,7 @@ class MiniNewsTickerWidget(QWidget):
         self._item_1: dict | None = None
         self._item_2: dict | None = None
         self._anim_group: QParallelAnimationGroup | None = None
+        self._is_guide_mode: bool = True
 
         for card in (self.card_1, self.card_2):
             card.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
@@ -116,24 +117,37 @@ class MiniNewsTickerWidget(QWidget):
         return w, card_h, y1, y2
 
     def _style_card(self, label: QLabel, news_item: dict, width: int):
+        category = news_item.get("category", "info")
         color_schemes = {
             "info": ("#fae17d", "#9a6700"),
             "danger": ("#f28b96", "#a40e26"),
-            "story": ("#d99be6", "#6639ba")
+            "story": ("#d99be6", "#6639ba"),
+            "guide": ("#ddf4ff", "#0969da"),
+            "guide_sub": ("#f6f8fa", "#8c959f"),
         }
-        bg, border = color_schemes.get(news_item.get("category", "info"), ("#fae17d", "#9a6700"))
+        bg, border = color_schemes.get(category, ("#fae17d", "#9a6700"))
+        is_guide = category in ("guide", "guide_sub")
+        font_size = "11px" if is_guide else "12px"
+
         label.setStyleSheet(f"""
             background-color: {bg};
             border: 1px solid {border};
             border-radius: 4px;
-            padding: 4px 8px;
-            font-size: 12px;
+            padding: 3px 8px;
+            font-size: {font_size};
             font-weight: bold;
             color: #1f2328;
         """)
-        metrics = QFontMetrics(label.font())
-        elided = metrics.elidedText(news_item.get("title", ""), Qt.TextElideMode.ElideRight, max(60, width - 20))
-        label.setText(elided)
+
+        title_text = news_item.get("title", "")
+        if is_guide:
+            label.setWordWrap(True)
+            label.setText(title_text)
+        else:
+            label.setWordWrap(False)
+            metrics = QFontMetrics(label.font())
+            elided = metrics.elidedText(title_text, Qt.TextElideMode.ElideRight, max(60, width - 20))
+            label.setText(elided)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -166,8 +180,18 @@ class MiniNewsTickerWidget(QWidget):
         else:
             self.card_2.hide()
 
+    def set_guide_items(self, line1: str, line2: str):
+        """튜토리얼 기간 동안 안내 카드 2줄 표시"""
+        self._is_guide_mode = True
+        if self._anim_group and self._anim_group.state() == QPropertyAnimation.State.Running:
+            self._anim_group.stop()
+        self._item_1 = {"title": line1, "category": "guide"}
+        self._item_2 = {"title": line2, "category": "guide_sub"} if line2 else None
+        self._snap_positions()
+
     def set_initial_items(self, history: list[dict]):
-        """초기 로드/리셋 시 애니메이션 없이 즉시 카드 배치"""
+        """본편 뉴스 모드로 전환 및 초기 카드 배치"""
+        self._is_guide_mode = False
         if self._anim_group and self._anim_group.state() == QPropertyAnimation.State.Running:
             self._anim_group.stop()
         self._item_1 = history[0] if len(history) >= 1 else None
@@ -176,6 +200,9 @@ class MiniNewsTickerWidget(QWidget):
 
     def push_animated_item(self, new_item: dict, prev_top_item: dict | None):
         """새 뉴스는 오른쪽 바깥에서 슬라이드 인, 기존 1번 뉴스는 2번 위치로 하강 이동"""
+        if self._is_guide_mode:
+            return
+
         if self._anim_group and self._anim_group.state() == QPropertyAnimation.State.Running:
             self._anim_group.stop()
 
@@ -226,6 +253,7 @@ class MainWindow(QMainWindow):
         self.game_state = GameState()
         self.save_manager = SaveManager()
         self.news_dialog = None
+        self._was_tutorial_active = True
 
         # 시그널 연결 및 초기 세이브 로드 전에 알림 타이머를 먼저 생성
         self.news_toast_timer = QTimer(self)
@@ -243,9 +271,9 @@ class MainWindow(QMainWindow):
         self.passive_timer.timeout.connect(self._on_tick)
         self.passive_timer.start(100)
 
-        # 25초 주기 상시 랜덤 뉴스 발생 타이머
+        # 25초 주기 상시 랜덤 뉴스 발생 타이머 (본편 진입 후에만 기사 발행)
         self.news_timer = QTimer(self)
-        self.news_timer.timeout.connect(self.game_state.trigger_random_news)
+        self.news_timer.timeout.connect(self._on_random_news_tick)
         self.news_timer.start(25000)
 
         # 30초 주기 자동 저장 및 백업 타이머
@@ -254,8 +282,19 @@ class MainWindow(QMainWindow):
         self.autosave_timer.start(30000)
 
         self._update_ui()
-        self.mini_news_ticker.set_initial_items(self.game_state.news_history)
+        self._sync_bottom_right_panel(force=True)
         self._update_unread_badge(self.game_state.unread_news_count)
+
+    def _is_tutorial_active(self) -> bool:
+        """ch1_start(AI 개발 착수) 구매 전까지를 튜토리얼 구간으로 판별"""
+        ch1_node = next((u for u in self.game_state.upgrades if u["id"] == "ch1_start"), None)
+        if not ch1_node:
+            return False
+        return not ch1_node.get("purchased", False)
+
+    def _on_random_news_tick(self):
+        if not self._is_tutorial_active():
+            self.game_state.trigger_random_news()
 
     def _load_initial_save(self):
         status, data = self.save_manager.load_auto()
@@ -335,7 +374,7 @@ class MainWindow(QMainWindow):
         self.console_widget = VirtualConsoleWidget(self.game_state)
         left_layout.addWidget(self.console_widget, stretch=1)
 
-        # 3. 하단 정보 영역 (좌: Specs / 우: NEWS)
+        # 3. 하단 정보 영역 (좌: Specs / 우: GUIDE -> NEWS)
         bottom_bar = QFrame()
         bottom_bar.setFixedHeight(155)
         bottom_bar.setStyleSheet("background-color: #ffffff; border-top: 2px solid #d0d7de;")
@@ -358,7 +397,7 @@ class MainWindow(QMainWindow):
         specs_layout.addWidget(self.lbl_bench)
         bottom_layout.addWidget(specs_box, stretch=1)
 
-        # 3-2. 하단 우측: 미니 NEWS 패널
+        # 3-2. 하단 우측: DEV GUIDE / NEWS 패널
         news_box = QFrame()
         news_box.setStyleSheet("border-left: 2px solid #d0d7de;")
         news_layout = QVBoxLayout(news_box)
@@ -368,8 +407,8 @@ class MainWindow(QMainWindow):
         news_header = QHBoxLayout()
         news_header.setSpacing(6)
 
-        lbl_news_title = QLabel("NEWS")
-        lbl_news_title.setStyleSheet("font-size: 15px; font-weight: bold; color: #1f2328; border: none;")
+        self.lbl_news_title = QLabel("DEV GUIDE")
+        self.lbl_news_title.setStyleSheet("font-size: 15px; font-weight: bold; color: #0969da; border: none;")
 
         # NEWS 글자 옆 안 읽은 뉴스 숫자 빨간 배지
         self.lbl_unread_badge = QLabel("0")
@@ -400,20 +439,20 @@ class MainWindow(QMainWindow):
         """)
         self.lbl_news_toast.hide()
 
-        btn_news_expand = QPushButton("↗")
-        btn_news_expand.setFixedSize(28, 24)
-        btn_news_expand.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_news_expand.setToolTip("전체 뉴스 / AI 활동 / 도감 / 설정 열기")
-        btn_news_expand.clicked.connect(lambda: self._show_news_popup(auto_triggered=False))
+        self.btn_news_expand = QPushButton("↗")
+        self.btn_news_expand.setFixedSize(28, 24)
+        self.btn_news_expand.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_news_expand.setToolTip("전체 뉴스 / AI 활동 / 도감 / 설정 열기")
+        self.btn_news_expand.clicked.connect(lambda: self._show_news_popup(auto_triggered=False))
 
-        news_header.addWidget(lbl_news_title)
+        news_header.addWidget(self.lbl_news_title)
         news_header.addWidget(self.lbl_unread_badge)
         news_header.addWidget(self.lbl_news_toast)
         news_header.addStretch()
-        news_header.addWidget(btn_news_expand)
+        news_header.addWidget(self.btn_news_expand)
         news_layout.addLayout(news_header)
 
-        # 오른쪽에서 슬라이드 인 되는 2단 뉴스 티커 영역
+        # 가이드 / 뉴스 2단 티커 영역
         self.mini_news_ticker = MiniNewsTickerWidget()
         news_layout.addWidget(self.mini_news_ticker, stretch=1)
         bottom_layout.addWidget(news_box, stretch=1)
@@ -438,6 +477,47 @@ class MainWindow(QMainWindow):
     def _on_tick(self):
         self.game_state.add_passive_tokens(0.1)
 
+    def _sync_bottom_right_panel(self, force: bool = False):
+        """튜토리얼 중에는 DEV GUIDE를, 본편 진입 후에는 NEWS 패널을 표시"""
+        is_tut = self._is_tutorial_active()
+        upg_map = {u["id"]: u["purchased"] for u in self.game_state.upgrades}
+
+        if is_tut:
+            self.lbl_news_title.setText("DEV GUIDE")
+            self.lbl_news_title.setStyleSheet("font-size: 15px; font-weight: bold; color: #0969da; border: none;")
+            self.lbl_unread_badge.hide()
+            self.lbl_news_toast.hide()
+
+            if not upg_map.get("tut_buffer", False):
+                if self.game_state.tokens < 1:
+                    self.mini_news_ticker.set_guide_items(
+                        "[1/4] 콘솔에 명령어를 입력해 첫 1 Token을 확보하세요.",
+                        "초기 입력 지연(200ms)으로 빠른 타자가 제한될 수 있습니다."
+                    )
+                else:
+                    self.mini_news_ticker.set_guide_items(
+                        "[2/4] 우측 트리의 [버퍼 최적화 (1 Tk)]를 클릭하세요.",
+                        "입력 지연을 완화하고 다음 개발 경로를 개방합니다."
+                    )
+            elif not (upg_map.get("tut_act_key", False) and upg_map.get("tut_pas_pc", False)):
+                self.mini_news_ticker.set_guide_items(
+                    "[3/4] 좌측(입력 매핑)과 우측(PC 조립) 노드를 모두 완료하세요.",
+                    "붉은색(액티브): 입력 지연 단축·효율 / 녹색(패시브): 기본·자동 토큰 생산량 증가"
+                )
+            else:
+                self.mini_news_ticker.set_guide_items(
+                    "[4/4] 10 Token을 모아 [AI 개발 착수]를 클릭하세요!",
+                    "튜토리얼을 마치고 본격적인 AI 개발 스토리가 시작됩니다."
+                )
+            self._was_tutorial_active = True
+        else:
+            if self._was_tutorial_active or force:
+                self.lbl_news_title.setText("NEWS")
+                self.lbl_news_title.setStyleSheet("font-size: 15px; font-weight: bold; color: #1f2328; border: none;")
+                self.mini_news_ticker.set_initial_items(self.game_state.news_history)
+                self._update_unread_badge(self.game_state.unread_news_count)
+                self._was_tutorial_active = False
+
     def _update_ui(self):
         gs = self.game_state
         self.lbl_tokens.setText(f"{format_number(gs.tokens)} Token")
@@ -456,14 +536,20 @@ class MainWindow(QMainWindow):
         )
         self.lbl_bench.setText(f"BENCH_SCORE : {format_number(s['BENCH_SCORE'])}")
 
-        # 리셋 등으로 뉴스가 비워졌을 때 미니 티커도 즉시 초기 상태로 동기화
-        if not gs.news_history and (self.mini_news_ticker._item_1 or self.mini_news_ticker._item_2):
-            self.mini_news_ticker.set_initial_items([])
+        # 완전 초기화 감지 시 콘솔 컴파일 부팅 연출 재실행
+        if (
+            gs.tokens == 0
+            and not gs.news_history
+            and not any(u["purchased"] for u in gs.upgrades)
+            and self.console_widget._boot_step >= len(self.console_widget.BOOT_SEQUENCE)
+        ):
+            self.console_widget.start_boot_sequence()
 
+        self._sync_bottom_right_panel(force=False)
         self.tree_widget.refresh_tree()
 
     def _update_unread_badge(self, count: int):
-        if count <= 0:
+        if self._is_tutorial_active() or count <= 0:
             self.lbl_unread_badge.hide()
         else:
             text = "99+" if count > 99 else str(count)
@@ -471,6 +557,9 @@ class MainWindow(QMainWindow):
             self.lbl_unread_badge.show()
 
     def _on_news_added(self, news_item: dict):
+        if self._is_tutorial_active():
+            return
+
         history = self.game_state.news_history
         prev_top = history[1] if len(history) >= 2 else None
         self.mini_news_ticker.push_animated_item(news_item, prev_top)

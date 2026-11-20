@@ -103,8 +103,9 @@ class GameState(QObject):
         # 초기 뉴스는 무표기(빈 리스트) 상태로 시작
         self.news_history = []
 
+        # 초반 튜토리얼 단계에서는 모든 AI 활동이 잠겨 있으며, 첫 패시브 수익 발생 시 1번 항목 해금
         self.ai_activities = [
-            {"name": "로컬 백그라운드 토큰 마이닝", "rate": "0 Tk/s", "status": "가동 중"},
+            {"name": "로컬 백그라운드 토큰 마이닝", "rate": "잠김 (Chap 1 하드웨어 증설 후 해금)", "status": "대기"},
             {"name": "유료 플레이어 구독 응답", "rate": "잠김 (Chap 5 AI 3.0 후 해금)", "status": "대기"},
             {"name": "자체 프로젝트 자율 수행", "rate": "잠김 (Chap 6 AI 5.0 후 해금)", "status": "대기"}
         ]
@@ -175,6 +176,15 @@ class GameState(QObject):
 
         if isinstance(data.get("ai_activities"), list):
             self.ai_activities = copy.deepcopy(data["ai_activities"])
+
+        # 세이브 복원 시 초당 토큰 수급 여부에 맞춰 1번 AI 활동 상태 동기화
+        if self.ai_activities:
+            if self.tokens_per_sec > 0:
+                self.ai_activities[0]["status"] = "가동 중"
+                self.ai_activities[0]["rate"] = f"{int(self.tokens_per_sec):,} Tk/s"
+            else:
+                self.ai_activities[0]["status"] = "대기"
+                self.ai_activities[0]["rate"] = "잠김 (Chap 1 하드웨어 증설 후 해금)"
 
         if isinstance(data.get("news_history"), list):
             self.news_history = copy.deepcopy(data["news_history"])
@@ -306,7 +316,9 @@ class GameState(QObject):
                     "status": act_info.get("status", "가동 중")
                 }
 
-        if self.ai_activities:
+        # 초당 토큰이 처음으로 0을 초과하는 순간 1번 AI 활동 자동 해금 및 가동
+        if self.ai_activities and self.tokens_per_sec > 0:
+            self.ai_activities[0]["status"] = "가동 중"
             self.ai_activities[0]["rate"] = f"{int(self.tokens_per_sec):,} Tk/s"
 
         if fx.get("trigger_singularity"):
