@@ -39,15 +39,15 @@ class GameState(QObject):
 
     FALLBACK_UPGRADES = [
         {
-            "id": "ch1_start",
-            "chapter": 1,
+            "id": "tut_buffer",
+            "chapter": 0,
             "row": 1, "col": 2,
-            "name": "AI 개발 착수",
-            "type": "story",
-            "cost": 30,
+            "name": "버퍼 최적화",
+            "type": "common",
+            "cost": 1,
             "req": [],
-            "desc": "[Chap 1 시작] 하드웨어 업그레이드 해금, 명령어당 토큰 +6",
-            "effects": {"cmd_add": 6, "bench_add": 100}
+            "desc": "[튜토리얼] 입력 지연 200ms → 150ms 완화",
+            "effects": {"cooldown_add": -50, "bench_add": 20}
         }
     ]
 
@@ -85,40 +85,26 @@ class GameState(QObject):
     def reset_state(self, emit_signal: bool = True):
         """게임 상태를 초기값으로 리셋"""
         self.tokens: float = 0.0
-        self.tokens_per_command: float = 24.0
-        self.tokens_per_sec: float = 6.0
+        self.tokens_per_command: float = 1.0
+        self.tokens_per_sec: float = 0.0
         self.input_cooldown_ms: int = 200
         self.command_tier: int = 1
         self.virtual_day_offset: int = 0
         self.unread_news_count: int = 0
 
         self.specs = {
-            "CPU": "Intel i5-12400F (로컬 테스트용)",
+            "CPU": "구형 듀얼코어 (미조립)",
             "GPU": "내장 그래픽",
-            "RAM": "DDR4 16GB",
-            "STORAGE": "NVMe 512GB",
-            "BENCH_SCORE": 120.0
+            "RAM": "DDR3 8GB",
+            "STORAGE": "HDD 500GB",
+            "BENCH_SCORE": 40.0
         }
 
-        self.news_history = [
-            {
-                "title": "1인 개발 AI, 최초 공개 후 커뮤니티 화제...",
-                "date": "2026. 11. 05",
-                "content": "지난밤 개인 개발자로부터 탄생한 초기 로컬 AI 모델이 공식적으로 첫 구동을 시작했다. 아직은 단순 명령어만 처리하지만...",
-                "category": "story",
-                "is_milestone": False
-            },
-            {
-                "title": "InstantGram, AI 개발 우려 표명.. AI 산업 주춤",
-                "date": "2026. 11. 04",
-                "content": "최근 InstantGram의 CEO가 제8차 AI 컨퍼런스에서 한 발언이 화제가 되고 있다. AI의 개발은 인류에게...",
-                "category": "danger",
-                "is_milestone": False
-            }
-        ]
+        # 초기 뉴스는 무표기(빈 리스트) 상태로 시작
+        self.news_history = []
 
         self.ai_activities = [
-            {"name": "로컬 백그라운드 토큰 마이닝", "rate": "6 Tk/s", "status": "가동 중"},
+            {"name": "로컬 백그라운드 토큰 마이닝", "rate": "0 Tk/s", "status": "가동 중"},
             {"name": "유료 플레이어 구독 응답", "rate": "잠김 (Chap 5 AI 3.0 후 해금)", "status": "대기"},
             {"name": "자체 프로젝트 자율 수행", "rate": "잠김 (Chap 6 AI 5.0 후 해금)", "status": "대기"}
         ]
@@ -136,8 +122,6 @@ class GameState(QObject):
             self.state_changed.emit()
             self.command_tier_changed.emit(self.command_tier)
             self.unread_news_changed.emit(self.unread_news_count)
-            if self.news_history:
-                self.news_added.emit(self.news_history[0])
 
     def set_command_tier(self, tier: int):
         clamped = max(1, min(4, int(tier)))
@@ -171,8 +155,8 @@ class GameState(QObject):
         self.reset_state(emit_signal=False)
 
         self.tokens = float(data.get("tokens", 0.0))
-        self.tokens_per_command = float(data.get("tokens_per_command", 24.0))
-        self.tokens_per_sec = float(data.get("tokens_per_sec", 6.0))
+        self.tokens_per_command = float(data.get("tokens_per_command", 1.0))
+        self.tokens_per_sec = float(data.get("tokens_per_sec", 0.0))
         self.input_cooldown_ms = int(data.get("input_cooldown_ms", 200))
         self.command_tier = max(1, min(4, int(data.get("command_tier", 1))))
         self.virtual_day_offset = int(data.get("virtual_day_offset", 0))
@@ -192,7 +176,7 @@ class GameState(QObject):
         if isinstance(data.get("ai_activities"), list):
             self.ai_activities = copy.deepcopy(data["ai_activities"])
 
-        if isinstance(data.get("news_history"), list) and len(data["news_history"]) > 0:
+        if isinstance(data.get("news_history"), list):
             self.news_history = copy.deepcopy(data["news_history"])
 
         self.state_changed.emit()
@@ -265,7 +249,6 @@ class GameState(QObject):
         self._apply_upgrade_effects(target)
         self.state_changed.emit()
 
-        # 스토리 이벤트가 포함된 노드라면 스토리 팝업 시그널 발송
         if isinstance(target.get("story_event"), dict):
             self.story_event_triggered.emit(target["story_event"])
 

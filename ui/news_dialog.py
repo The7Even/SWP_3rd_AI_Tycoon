@@ -9,7 +9,7 @@ from PyQt6.QtCore import Qt, QPropertyAnimation, QPoint, QEasingCurve, QTimer
 
 
 class NewsCardWidget(QFrame):
-    """계획서 3.2절의 파스텔 톤 뉴스 카드 (제목 + 날짜 + 가로선 + 요약 본문)"""
+    """파스텔 톤 뉴스 카드 (제목 + 날짜 + 가로선 + 요약 본문)"""
 
     def __init__(self, news_item: dict):
         super().__init__()
@@ -75,7 +75,7 @@ class NewsCardWidget(QFrame):
 
 
 class NewsDialog(QDialog):
-    """계획서 3.2절 확장 팝업창 (최근 뉴스 / AI 활동 / 도감 / 설정 4단 탭 지원)"""
+    """확장 팝업창 (최근 뉴스 / AI 활동 / 도감 / 설정 4단 탭 지원)"""
 
     def __init__(self, game_state, save_manager, parent=None):
         super().__init__(parent)
@@ -114,7 +114,7 @@ class NewsDialog(QDialog):
             return
         first_item = self.news_list_layout.itemAt(0)
         card = first_item.widget() if first_item else None
-        if not card:
+        if not isinstance(card, NewsCardWidget):
             return
 
         target_pos = card.pos()
@@ -540,7 +540,6 @@ class NewsDialog(QDialog):
 
     def _on_news_updated_in_dialog(self, _news_item: dict):
         self.refresh_news()
-        # 이미 팝업이 열려 있고 현재 0번 탭(최근 뉴스)을 보고 있다면 즉시 읽음 처리
         if self.isVisible() and self.stack.currentIndex() == 0:
             self.game_state.clear_unread_news()
             self._animate_first_news_card()
@@ -629,6 +628,19 @@ class NewsDialog(QDialog):
 
     def refresh_news(self):
         self._clear_layout(self.news_list_layout)
+        if not self.game_state.news_history:
+            lbl_no_news = QLabel("아직 보도된 뉴스가 없습니다.\nAI 개발을 진행하면 세상의 반응이 이곳에 표시됩니다.")
+            lbl_no_news.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            lbl_no_news.setStyleSheet("""
+                background-color: transparent;
+                color: #6e7781;
+                font-size: 13px;
+                padding: 40px 0px;
+                border: none;
+            """)
+            self.news_list_layout.addWidget(lbl_no_news)
+            return
+
         for item in self.game_state.news_history:
             card = NewsCardWidget(item)
             self.news_list_layout.addWidget(card)

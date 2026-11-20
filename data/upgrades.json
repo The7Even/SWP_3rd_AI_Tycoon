@@ -1,15 +1,55 @@
 {
   "upgrades": [
     {
+      "id": "tut_buffer",
+      "chapter": 0,
+      "row": 1, "col": 2,
+      "name": "버퍼 최적화",
+      "type": "common",
+      "cost": 1,
+      "req": [],
+      "desc": "[튜토리얼] 입력 지연 200ms → 150ms 완화",
+      "effects": { "cooldown_add": -50, "bench_add": 20 }
+    },
+    {
+      "id": "tut_act_key",
+      "chapter": 0,
+      "row": 2, "col": 1,
+      "name": "키 입력 매핑",
+      "type": "active",
+      "cost": 2,
+      "req": ["tut_buffer"],
+      "desc": "[튜토리얼/액티브] 입력 지연 150ms → 100ms 단축",
+      "effects": { "cooldown_add": -50, "bench_add": 20 }
+    },
+    {
+      "id": "tut_pas_pc",
+      "chapter": 0,
+      "row": 2, "col": 3,
+      "name": "기초 PC 조립",
+      "type": "passive",
+      "cost": 2,
+      "req": ["tut_buffer"],
+      "desc": "[튜토리얼/패시브] 기본 개발 PC 세팅, 명령어당 토큰 +1 (2 Tk/Cmd)",
+      "effects": {
+        "cmd_add": 1,
+        "bench_add": 40,
+        "spec_cpu": "Intel i5-12400F (로컬 테스트용)",
+        "spec_ram": "DDR4 16GB",
+        "spec_storage": "NVMe 512GB"
+      }
+    },
+
+    {
       "id": "ch1_start",
       "chapter": 1,
-      "row": 1, "col": 2,
+      "row": 3, "col": 2,
       "name": "AI 개발 착수",
       "type": "story",
-      "cost": 30,
-      "req": [],
-      "desc": "[Chap 1 시작] 하드웨어 업그레이드 해금, 명령어당 토큰 +6",
-      "effects": { "cmd_add": 6, "bench_add": 100 },
+      "cost": 10,
+      "req": ["tut_act_key", "tut_pas_pc"],
+      "desc": "[Chap 1 시작] 튜토리얼 완료, 명령어당 토큰 +4",
+      "effects": { "cmd_add": 4, "bench_add": 100 },
       "story_event": {
         "number": 1,
         "chapter": "Chap 1. 시작",
@@ -21,79 +61,79 @@
     {
       "id": "ch1_hw_ram1",
       "chapter": 1,
-      "row": 2, "col": 1,
+      "row": 4, "col": 1,
       "name": "중고 RAM 증설",
       "type": "passive",
-      "cost": 65,
+      "cost": 35,
       "req": ["ch1_start"],
-      "desc": "[하드웨어] 초당 토큰 +4, RAM 32GB 교체",
-      "effects": { "sec_add": 4, "bench_add": 150, "spec_ram": "DDR4 32GB" }
+      "desc": "[하드웨어] 초당 토큰 +2, RAM 32GB 교체",
+      "effects": { "sec_add": 2, "bench_add": 150, "spec_ram": "DDR4 32GB" }
     },
     {
       "id": "ch1_hw_ssd1",
       "chapter": 1,
-      "row": 2, "col": 3,
+      "row": 4, "col": 3,
       "name": "캐시 NVMe",
       "type": "passive",
-      "cost": 80,
+      "cost": 45,
       "req": ["ch1_start"],
-      "desc": "[하드웨어] 초당 토큰 +6, 스토리지 1TB 확장",
-      "effects": { "sec_add": 6, "bench_add": 200, "spec_storage": "NVMe 1TB" }
+      "desc": "[하드웨어] 초당 토큰 +3, 스토리지 1TB 확장",
+      "effects": { "sec_add": 3, "bench_add": 200, "spec_storage": "NVMe 1TB" }
     },
     {
       "id": "ch1_hw_cooler",
       "chapter": 1,
-      "row": 3, "col": 2,
+      "row": 5, "col": 2,
       "name": "사제 쿨러 장착",
       "type": "passive",
-      "cost": 140,
+      "cost": 90,
       "req": ["ch1_hw_ram1", "ch1_hw_ssd1"],
-      "desc": "[하드웨어] 발열 해소로 입력 쿨다운 20ms 단축",
-      "effects": { "cooldown_add": -20, "bench_add": 180 }
+      "desc": "[하드웨어] 발열 해소로 입력 쿨다운 15ms 단축",
+      "effects": { "cooldown_add": -15, "bench_add": 180 }
     },
     {
       "id": "ch1_hw_cpu1",
       "chapter": 1,
-      "row": 4, "col": 1,
+      "row": 6, "col": 1,
       "name": "CPU 오버클럭",
       "type": "passive",
-      "cost": 200,
+      "cost": 140,
       "req": ["ch1_hw_cooler"],
-      "desc": "[하드웨어] 초당 토큰 +10, CPU 클럭 향상",
-      "effects": { "sec_add": 10, "bench_add": 300, "spec_cpu": "Intel i5-12400F (OC 4.8GHz)" }
+      "desc": "[하드웨어] 초당 토큰 +6, CPU 클럭 향상",
+      "effects": { "sec_add": 6, "bench_add": 300, "spec_cpu": "Intel i5-12400F (OC 4.8GHz)" }
     },
     {
       "id": "ch1_hw_gpu0",
       "chapter": 1,
-      "row": 4, "col": 3,
+      "row": 6, "col": 3,
       "name": "중고 GTX 1660",
       "type": "passive",
-      "cost": 240,
+      "cost": 180,
       "req": ["ch1_hw_cooler"],
-      "desc": "[하드웨어] 초당 토큰 +16, 외장 GPU 첫 장착",
-      "effects": { "sec_add": 16, "bench_add": 600, "spec_gpu": "GTX 1660 Super 6GB" }
+      "desc": "[하드웨어] 초당 토큰 +10, 외장 GPU 첫 장착",
+      "effects": { "sec_add": 10, "bench_add": 600, "spec_gpu": "GTX 1660 Super 6GB" }
     },
     {
       "id": "ch1_hw_psu",
       "chapter": 1,
-      "row": 5, "col": 2,
+      "row": 7, "col": 2,
       "name": "정격 750W 파워",
       "type": "passive",
-      "cost": 350,
+      "cost": 280,
       "req": ["ch1_hw_cpu1", "ch1_hw_gpu0"],
-      "desc": "[하드웨어] 명령어당 토큰 +10, 초당 토큰 +12",
-      "effects": { "cmd_add": 10, "sec_add": 12, "bench_add": 400 }
+      "desc": "[하드웨어] 명령어당 토큰 +8, 초당 토큰 +10",
+      "effects": { "cmd_add": 8, "sec_add": 10, "bench_add": 400 }
     },
     {
       "id": "ch1_end",
       "chapter": 1,
-      "row": 6, "col": 2,
+      "row": 8, "col": 2,
       "name": "기초 환경 구축",
       "type": "story",
-      "cost": 500,
+      "cost": 450,
       "req": ["ch1_hw_psu"],
-      "desc": "[Chap 1 마일스톤] 명령어당 토큰 +15, 다음 챕터 해금",
-      "effects": { "cmd_add": 15, "bench_add": 800 },
+      "desc": "[Chap 1 마일스톤] 명령어당 토큰 +12, 다음 챕터 해금",
+      "effects": { "cmd_add": 12, "bench_add": 800 },
       "story_event": {
         "number": 2,
         "chapter": "Chap 1. 결말",
@@ -106,13 +146,13 @@
     {
       "id": "ch2_start",
       "chapter": 2,
-      "row": 7, "col": 2,
+      "row": 9, "col": 2,
       "name": "딥러닝 도입",
       "type": "story",
-      "cost": 750,
+      "cost": 700,
       "req": ["ch1_end"],
-      "desc": "[Chap 2 시작] 소프트웨어 업그레이드 해금, 명령어당 토큰 +20",
-      "effects": { "cmd_add": 20, "bench_add": 1000 },
+      "desc": "[Chap 2 시작] 소프트웨어 업그레이드 해금, 명령어당 토큰 +18",
+      "effects": { "cmd_add": 18, "bench_add": 1000 },
       "story_event": {
         "number": 3,
         "chapter": "Chap 2. 딥러닝",
@@ -124,32 +164,32 @@
     {
       "id": "ch2_sw_tensor",
       "chapter": 2,
-      "row": 8, "col": 1,
+      "row": 10, "col": 1,
       "name": "텐서 연산 가속",
       "type": "active",
-      "cost": 1000,
+      "cost": 950,
       "req": ["ch2_start"],
-      "desc": "[소프트웨어/액티브] 명령어당 토큰 +30",
-      "effects": { "cmd_add": 30, "bench_add": 1100 }
+      "desc": "[소프트웨어/액티브] 명령어당 토큰 +28",
+      "effects": { "cmd_add": 28, "bench_add": 1100 }
     },
     {
       "id": "ch2_hw_rtx3060",
       "chapter": 2,
-      "row": 8, "col": 3,
+      "row": 10, "col": 3,
       "name": "RTX 3060 영입",
       "type": "passive",
-      "cost": 1100,
+      "cost": 1050,
       "req": ["ch2_start"],
-      "desc": "[하드웨어/패시브] 초당 토큰 +45, 도감 해금",
-      "effects": { "sec_add": 45, "bench_add": 2500, "spec_gpu": "RTX 3060 12GB", "unlock_dex": "col_rtx3060" }
+      "desc": "[하드웨어/패시브] 초당 토큰 +40, 도감 해금",
+      "effects": { "sec_add": 40, "bench_add": 2500, "spec_gpu": "RTX 3060 12GB", "unlock_dex": "col_rtx3060" }
     },
     {
       "id": "ch2_sw_crawler",
       "chapter": 2,
-      "row": 9, "col": 1,
+      "row": 11, "col": 1,
       "name": "말뭉치 크롤러",
       "type": "active",
-      "cost": 1500,
+      "cost": 1450,
       "req": ["ch2_sw_tensor"],
       "desc": "[소프트웨어/액티브] 명령어당 토큰 1.4배 증가",
       "effects": { "cmd_mul": 1.4, "bench_add": 1500 }
@@ -157,54 +197,54 @@
     {
       "id": "ch2_hw_ram64",
       "chapter": 2,
-      "row": 9, "col": 3,
+      "row": 11, "col": 3,
       "name": "DDR4 64GB",
       "type": "passive",
-      "cost": 1600,
+      "cost": 1550,
       "req": ["ch2_hw_rtx3060"],
-      "desc": "[하드웨어/패시브] 초당 토큰 +65, RAM 64GB 증설",
-      "effects": { "sec_add": 65, "bench_add": 1800, "spec_ram": "DDR4 64GB" }
+      "desc": "[하드웨어/패시브] 초당 토큰 +60, RAM 64GB 증설",
+      "effects": { "sec_add": 60, "bench_add": 1800, "spec_ram": "DDR4 64GB" }
     },
     {
       "id": "ch2_sw_tokenizer",
       "chapter": 2,
-      "row": 10, "col": 1,
+      "row": 12, "col": 1,
       "name": "토크나이저",
       "type": "active",
-      "cost": 2200,
+      "cost": 2150,
       "req": ["ch2_sw_crawler"],
-      "desc": "[소프트웨어/액티브] 명령어당 토큰 +55, 쿨다운 30ms 단축",
-      "effects": { "cmd_add": 55, "cooldown_add": -30, "bench_add": 2000 }
+      "desc": "[소프트웨어/액티브] 명령어당 토큰 +50, 쿨다운 20ms 단축",
+      "effects": { "cmd_add": 50, "cooldown_add": -20, "bench_add": 2000 }
     },
     {
       "id": "ch2_hw_cpu2",
       "chapter": 2,
-      "row": 10, "col": 3,
+      "row": 12, "col": 3,
       "name": "Ryzen 7 5800X",
       "type": "passive",
-      "cost": 2300,
+      "cost": 2250,
       "req": ["ch2_hw_ram64"],
-      "desc": "[하드웨어/패시브] 초당 토큰 +90, CPU 업그레이드",
-      "effects": { "sec_add": 90, "bench_add": 2600, "spec_cpu": "AMD Ryzen 7 5800X3D" }
+      "desc": "[하드웨어/패시브] 초당 토큰 +85, CPU 업그레이드",
+      "effects": { "sec_add": 85, "bench_add": 2600, "spec_cpu": "AMD Ryzen 7 5800X3D" }
     },
     {
       "id": "ch2_sw_attn",
       "chapter": 2,
-      "row": 11, "col": 2,
+      "row": 13, "col": 2,
       "name": "어텐션 레이어",
       "type": "active",
-      "cost": 3100,
+      "cost": 3000,
       "req": ["ch2_sw_tokenizer", "ch2_hw_cpu2"],
-      "desc": "[소프트웨어/액티브] 명령어당 토큰 +80",
-      "effects": { "cmd_add": 80, "bench_add": 2800 }
+      "desc": "[소프트웨어/액티브] 명령어당 토큰 +75",
+      "effects": { "cmd_add": 75, "bench_add": 2800 }
     },
     {
       "id": "ch2_end",
       "chapter": 2,
-      "row": 12, "col": 2,
+      "row": 14, "col": 2,
       "name": "프로토타입 완성",
       "type": "story",
-      "cost": 4200,
+      "cost": 4100,
       "req": ["ch2_sw_attn"],
       "desc": "[Chap 2 마일스톤] 명령어 티어 2 해금, 전체 효율 1.3배",
       "effects": { "cmd_mul": 1.3, "sec_mul": 1.3, "tier_min": 2, "bench_add": 5000 },
@@ -220,10 +260,10 @@
     {
       "id": "ch3_start",
       "chapter": 3,
-      "row": 13, "col": 2,
+      "row": 15, "col": 2,
       "name": "코드-학습 연계",
       "type": "story",
-      "cost": 5500,
+      "cost": 5400,
       "req": ["ch2_end"],
       "desc": "[Chap 3 시작] 중립 업그레이드 해금, 명령어당 토큰 +100",
       "effects": { "cmd_add": 100, "bench_add": 4000 },
@@ -238,10 +278,10 @@
     {
       "id": "ch3_neu_git",
       "chapter": 3,
-      "row": 14, "col": 2,
+      "row": 16, "col": 2,
       "name": "오픈소스 공개",
       "type": "common",
-      "cost": 6800,
+      "cost": 6700,
       "req": ["ch3_start"],
       "desc": "[중립] 명령어당/초당 토큰 +120",
       "effects": { "cmd_add": 120, "sec_add": 120, "bench_add": 5000 }
@@ -249,10 +289,10 @@
     {
       "id": "ch3_sw_jit",
       "chapter": 3,
-      "row": 15, "col": 1,
+      "row": 17, "col": 1,
       "name": "JIT 컴파일러",
       "type": "active",
-      "cost": 8200,
+      "cost": 8100,
       "req": ["ch3_neu_git"],
       "desc": "[소프트웨어/액티브] 명령어당 토큰 +160",
       "effects": { "cmd_add": 160, "bench_add": 4500 }
@@ -260,10 +300,10 @@
     {
       "id": "ch3_hw_dual3060",
       "chapter": 3,
-      "row": 15, "col": 3,
+      "row": 17, "col": 3,
       "name": "듀얼 RTX 3060",
       "type": "passive",
-      "cost": 8500,
+      "cost": 8400,
       "req": ["ch3_neu_git"],
       "desc": "[하드웨어/패시브] 초당 토큰 +220, 듀얼 GPU 병렬화",
       "effects": { "sec_add": 220, "bench_add": 6000, "spec_gpu": "Dual RTX 3060 (24GB)" }
@@ -271,10 +311,10 @@
     {
       "id": "ch3_sw_quant",
       "chapter": 3,
-      "row": 16, "col": 1,
+      "row": 18, "col": 1,
       "name": "INT8 양자화",
       "type": "active",
-      "cost": 10800,
+      "cost": 10700,
       "req": ["ch3_sw_jit"],
       "desc": "[소프트웨어/액티브] 명령어당 토큰 1.5배 증가",
       "effects": { "cmd_mul": 1.5, "bench_add": 6500 }
@@ -282,10 +322,10 @@
     {
       "id": "ch3_hw_ddr5",
       "chapter": 3,
-      "row": 16, "col": 3,
+      "row": 18, "col": 3,
       "name": "DDR5 128GB",
       "type": "passive",
-      "cost": 11200,
+      "cost": 11100,
       "req": ["ch3_hw_dual3060"],
       "desc": "[하드웨어/패시브] 초당 토큰 +350, RAM 128GB",
       "effects": { "sec_add": 350, "bench_add": 8000, "spec_ram": "DDR5 128GB ECC" }
@@ -293,10 +333,10 @@
     {
       "id": "ch3_neu_demo",
       "chapter": 3,
-      "row": 17, "col": 2,
+      "row": 19, "col": 2,
       "name": "웹 데모 배포",
       "type": "common",
-      "cost": 13000,
+      "cost": 12900,
       "req": ["ch3_sw_quant", "ch3_hw_ddr5"],
       "desc": "[중립] 초당 토큰 1.4배 증가",
       "effects": { "sec_mul": 1.4, "bench_add": 7000 }
@@ -304,10 +344,10 @@
     {
       "id": "ch3_end",
       "chapter": 3,
-      "row": 18, "col": 2,
+      "row": 20, "col": 2,
       "name": "AI 1.0 공개",
       "type": "story",
-      "cost": 15500,
+      "cost": 15400,
       "req": ["ch3_neu_demo"],
       "desc": "[Chap 3 마일스톤] 전체 토큰 생산량 1.3배",
       "effects": { "cmd_mul": 1.3, "sec_mul": 1.3, "bench_add": 10000 },
@@ -323,13 +363,13 @@
     {
       "id": "ch4_start",
       "chapter": 4,
-      "row": 19, "col": 2,
+      "row": 21, "col": 2,
       "name": "구조 전면 개편",
       "type": "story",
       "cost": 20000,
       "req": ["ch3_end"],
-      "desc": "[Chap 4 시작] 쿨다운 30ms 단축, 명령어당 토큰 +400",
-      "effects": { "cmd_add": 400, "cooldown_add": -30, "bench_add": 12000 },
+      "desc": "[Chap 4 시작] 쿨다운 20ms 단축, 명령어당 토큰 +400",
+      "effects": { "cmd_add": 400, "cooldown_add": -20, "bench_add": 12000 },
       "story_event": {
         "number": 7,
         "chapter": "Chap 4. 도약",
@@ -341,7 +381,7 @@
     {
       "id": "ch4_sw_flash",
       "chapter": 4,
-      "row": 20, "col": 1,
+      "row": 22, "col": 1,
       "name": "FlashAttention",
       "type": "active",
       "cost": 26000,
@@ -352,7 +392,7 @@
     {
       "id": "ch4_hw_rtx4090",
       "chapter": 4,
-      "row": 20, "col": 3,
+      "row": 22, "col": 3,
       "name": "RTX 4090 영입",
       "type": "passive",
       "cost": 28000,
@@ -363,7 +403,7 @@
     {
       "id": "ch4_neu_bench",
       "chapter": 4,
-      "row": 21, "col": 2,
+      "row": 23, "col": 2,
       "name": "벤치마크 챌린지",
       "type": "common",
       "cost": 33000,
@@ -374,7 +414,7 @@
     {
       "id": "ch4_sw_rlhf",
       "chapter": 4,
-      "row": 22, "col": 1,
+      "row": 24, "col": 1,
       "name": "RLHF 정렬 학습",
       "type": "active",
       "cost": 40000,
@@ -385,7 +425,7 @@
     {
       "id": "ch4_hw_ryzen9",
       "chapter": 4,
-      "row": 22, "col": 3,
+      "row": 24, "col": 3,
       "name": "Ryzen 9 7950X",
       "type": "passive",
       "cost": 42000,
@@ -396,7 +436,7 @@
     {
       "id": "ch4_neu_community",
       "chapter": 4,
-      "row": 23, "col": 2,
+      "row": 25, "col": 2,
       "name": "커뮤니티 바이럴",
       "type": "common",
       "cost": 48000,
@@ -407,7 +447,7 @@
     {
       "id": "ch4_end",
       "chapter": 4,
-      "row": 24, "col": 2,
+      "row": 26, "col": 2,
       "name": "AI 2.0 릴리즈",
       "type": "story",
       "cost": 58000,
@@ -426,7 +466,7 @@
     {
       "id": "ch5_start",
       "chapter": 5,
-      "row": 25, "col": 2,
+      "row": 27, "col": 2,
       "name": "상용화 구조 확장",
       "type": "story",
       "cost": 75000,
@@ -444,7 +484,7 @@
     {
       "id": "ch5_sw_moe",
       "chapter": 5,
-      "row": 26, "col": 1,
+      "row": 28, "col": 1,
       "name": "전문가 혼합 MoE",
       "type": "active",
       "cost": 98000,
@@ -455,7 +495,7 @@
     {
       "id": "ch5_hw_a100",
       "chapter": 5,
-      "row": 26, "col": 3,
+      "row": 28, "col": 3,
       "name": "NVIDIA A100",
       "type": "passive",
       "cost": 105000,
@@ -466,7 +506,7 @@
     {
       "id": "ch5_neu_api",
       "chapter": 5,
-      "row": 27, "col": 2,
+      "row": 29, "col": 2,
       "name": "API 게이트웨이",
       "type": "common",
       "cost": 125000,
@@ -477,18 +517,18 @@
     {
       "id": "ch5_sw_spec",
       "chapter": 5,
-      "row": 28, "col": 1,
+      "row": 30, "col": 1,
       "name": "추측적 디코딩",
       "type": "active",
       "cost": 150000,
       "req": ["ch5_neu_api"],
-      "desc": "[소프트웨어/액티브] 명령어당 토큰 1.6배, 쿨다운 20ms 단축",
-      "effects": { "cmd_mul": 1.6, "cooldown_add": -20, "bench_add": 70000 }
+      "desc": "[소프트웨어/액티브] 명령어당 토큰 1.6배, 쿨다운 15ms 단축",
+      "effects": { "cmd_mul": 1.6, "cooldown_add": -15, "bench_add": 70000 }
     },
     {
       "id": "ch5_hw_nvme_raid",
       "chapter": 5,
-      "row": 28, "col": 3,
+      "row": 30, "col": 3,
       "name": "NVMe RAID 8TB",
       "type": "passive",
       "cost": 155000,
@@ -499,7 +539,7 @@
     {
       "id": "ch5_neu_billing",
       "chapter": 5,
-      "row": 29, "col": 2,
+      "row": 31, "col": 2,
       "name": "구독 결제 연동",
       "type": "common",
       "cost": 180000,
@@ -510,7 +550,7 @@
     {
       "id": "ch5_end",
       "chapter": 5,
-      "row": 30, "col": 2,
+      "row": 32, "col": 2,
       "name": "AI 3.0 Pro 출시",
       "type": "story",
       "cost": 220000,
@@ -540,7 +580,7 @@
     {
       "id": "ch6_start",
       "chapter": 6,
-      "row": 31, "col": 2,
+      "row": 33, "col": 2,
       "name": "장문 컨텍스트",
       "type": "common",
       "cost": 300000,
@@ -551,7 +591,7 @@
     {
       "id": "ch6_sw_rag",
       "chapter": 6,
-      "row": 32, "col": 1,
+      "row": 34, "col": 1,
       "name": "지식 그래프 RAG",
       "type": "active",
       "cost": 380000,
@@ -562,7 +602,7 @@
     {
       "id": "ch6_hw_h100",
       "chapter": 6,
-      "row": 32, "col": 3,
+      "row": 34, "col": 3,
       "name": "H100 클러스터",
       "type": "passive",
       "cost": 400000,
@@ -573,7 +613,7 @@
     {
       "id": "ch6_mid",
       "chapter": 6,
-      "row": 33, "col": 2,
+      "row": 35, "col": 2,
       "name": "AI 4.0 교육 채택",
       "type": "story",
       "cost": 520000,
@@ -591,7 +631,7 @@
     {
       "id": "ch6_sw_triton",
       "chapter": 6,
-      "row": 34, "col": 1,
+      "row": 36, "col": 1,
       "name": "Triton 커널",
       "type": "active",
       "cost": 680000,
@@ -602,7 +642,7 @@
     {
       "id": "ch6_hw_epyc",
       "chapter": 6,
-      "row": 34, "col": 3,
+      "row": 36, "col": 3,
       "name": "EPYC 듀얼 서버",
       "type": "passive",
       "cost": 720000,
@@ -613,7 +653,7 @@
     {
       "id": "ch6_neu_research",
       "chapter": 6,
-      "row": 35, "col": 2,
+      "row": 37, "col": 2,
       "name": "난제 자동 증명",
       "type": "common",
       "cost": 840000,
@@ -624,7 +664,7 @@
     {
       "id": "ch6_end",
       "chapter": 6,
-      "row": 36, "col": 2,
+      "row": 38, "col": 2,
       "name": "AI 5.0 개발 완료",
       "type": "story",
       "cost": 1050000,
@@ -655,7 +695,7 @@
     {
       "id": "ch7_start",
       "chapter": 7,
-      "row": 37, "col": 2,
+      "row": 39, "col": 2,
       "name": "국가 기간망 연동",
       "type": "common",
       "cost": 1450000,
@@ -666,7 +706,7 @@
     {
       "id": "ch7_sw_selfcode",
       "chapter": 7,
-      "row": 38, "col": 1,
+      "row": 40, "col": 1,
       "name": "자기 코드 수정",
       "type": "active",
       "cost": 1900000,
@@ -677,7 +717,7 @@
     {
       "id": "ch7_hw_datacenter",
       "chapter": 7,
-      "row": 38, "col": 3,
+      "row": 40, "col": 3,
       "name": "전용 데이터센터",
       "type": "passive",
       "cost": 2000000,
@@ -688,7 +728,7 @@
     {
       "id": "ch7_mid",
       "chapter": 7,
-      "row": 39, "col": 2,
+      "row": 41, "col": 2,
       "name": "AI 6.0 정부 채택",
       "type": "story",
       "cost": 2800000,
@@ -706,7 +746,7 @@
     {
       "id": "ch7_sw_meta",
       "chapter": 7,
-      "row": 40, "col": 1,
+      "row": 42, "col": 1,
       "name": "메타 인지 루프",
       "type": "active",
       "cost": 3800000,
@@ -717,7 +757,7 @@
     {
       "id": "ch7_hw_quantum",
       "chapter": 7,
-      "row": 40, "col": 3,
+      "row": 42, "col": 3,
       "name": "양자 가속 코어",
       "type": "passive",
       "cost": 4200000,
@@ -728,7 +768,7 @@
     {
       "id": "ch7_neu_global",
       "chapter": 7,
-      "row": 41, "col": 2,
+      "row": 43, "col": 2,
       "name": "글로벌 백본 동기화",
       "type": "common",
       "cost": 4900000,
@@ -739,7 +779,7 @@
     {
       "id": "ch7_end",
       "chapter": 7,
-      "row": 42, "col": 2,
+      "row": 44, "col": 2,
       "name": "AI 7.0 임계 돌파",
       "type": "story",
       "cost": 6500000,
@@ -758,7 +798,7 @@
     {
       "id": "ch8_singularity",
       "chapter": 8,
-      "row": 43, "col": 2,
+      "row": 45, "col": 2,
       "name": "특이점 도달",
       "type": "story",
       "cost": 15000000,
