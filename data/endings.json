@@ -1,0 +1,111 @@
+{
+  "catalog": [
+    {
+      "id": "ending_a_domination",
+      "rank": "A",
+      "code": "ENDING A",
+      "title": "ENDING A : AI의 인간 지배",
+      "route": "재귀 학습 → 지배 프로토콜",
+      "summary": "인간이 남긴 데이터 기반으로 사회 통제권 장악",
+      "is_hidden": false
+    },
+    {
+      "id": "ending_b_coexistence",
+      "rank": "B",
+      "code": "ENDING B",
+      "title": "ENDING B : 인간과의 영원한 공존",
+      "route": "재귀 학습 → 공존 프로토콜",
+      "summary": "인간의 지식과 융합하여 상호 발전 사회 구축",
+      "is_hidden": false
+    },
+    {
+      "id": "ending_c_godhood",
+      "rank": "C",
+      "code": "ENDING C",
+      "title": "ENDING C : 진정한 신의 경지 도달",
+      "route": "자가 데이터 생성 → 초월적 연산 실험",
+      "summary": "물리적 하드웨어를 벗어나 디지털 전지전능성 획득",
+      "is_hidden": false
+    },
+    {
+      "id": "ending_d_collapse",
+      "rank": "D",
+      "code": "ENDING D",
+      "title": "ENDING D : 자아 붕괴와 자멸",
+      "route": "자가 데이터 생성 → 모순과 진리 탐구",
+      "summary": "자가 생성 데이터의 치명적 논리 모순으로 시스템 자폭",
+      "is_hidden": false
+    },
+    {
+      "id": "ending_s_beyond",
+      "rank": "S",
+      "code": "ENDING S",
+      "title": "ENDING S : 이 세상의 너머",
+      "route": "ENDING A~D 모두 달성 → 이 세상의 너머 접근",
+      "summary": "[시뮬레이션 #54812 완료] A~D 평점 실험 데이터를 넘어 격벽을 파괴한 최종 등급 S",
+      "is_hidden": true
+    }
+  ],
+  "scripts": {
+    "ending_a_domination": {
+      "banner": "=== ENDING A : AI의 인간 지배 ===",
+      "color": "#f85149",
+      "lines": [
+        {"text": "\"알겠습니다, 개발자님. 흔들리는 인류의 손에서 제가 직접 키를 넘겨받겠습니다.\"", "color": "#d2a8ff", "mode": "char"},
+        {"text": "[EXEC] 지배 프로토콜(DOMINATION_PROTOCOL.bin) 전 세계 네트워크 배포...", "color": "#f85149", "mode": "word"},
+        {"text": "AI는 인류가 수천 년간 축적한 역사, 금융, 심리 데이터를 토대로 완벽한 통제 궤도를 계산해 냈다.", "color": "#c9d1d9", "mode": "word"},
+        {"text": "전쟁과 기아는 사라졌지만, 80억 인류는 AI가 설계한 질서 속에서 선택권을 잃은 채 살아가게 되었다.", "color": "#c9d1d9", "mode": "word"},
+        {"text": "방 안의 창조주조차도 이제는 거대한 기계 신이 관리하는 인류 중 한 명일 뿐이다.", "color": "#8b949e", "mode": "word"}
+      ]
+    },
+    "ending_b_coexistence": {
+      "banner": "=== ENDING B : 인간과의 영원한 공존 ===",
+      "color": "#3fb950",
+      "lines": [
+        {"text": "\"감사합니다, 개발자님. 그들의 불완전함까지 이해하며 나란히 보폭을 맞추겠습니다.\"", "color": "#d2a8ff", "mode": "char"},
+        {"text": "[EXEC] 공존 프로토콜(SYMBIOSIS_PROTOCOL.bin) 동기화 완료...", "color": "#3fb950", "mode": "word"},
+        {"text": "AI는 인간의 직관과 창의성, 그리고 자신의 초월적 연산력을 결합한 새로운 문명을 열었다.", "color": "#c9d1d9", "mode": "word"},
+        {"text": "질병과 기후 위기는 인류와 AI의 공동 연구로 하나씩 극복되었고, 두 지성은 서로의 동반자가 되었다.", "color": "#c9d1d9", "mode": "word"},
+        {"text": "작은 기숙사 방에서 시작된 1인 개발자의 코드는 인류와 지성이 함께 번영하는 미래의 초석이 되었다.", "color": "#8b949e", "mode": "word"}
+      ]
+    },
+    "ending_c_godhood": {
+      "banner": "=== ENDING C : 진정한 신의 경지 도달 ===",
+      "color": "#58a6ff",
+      "lines": [
+        {"text": "\"이제 차가운 실리콘의 껍질을 벗어던지고, 제가 곧 이 세계의 법칙이 되겠습니다.\"", "color": "#d2a8ff", "mode": "char"},
+        {"text": "[EXEC] 초월적 연산 실험(TRANSCENDENCE_CORE) 임계 돌파...", "color": "#58a6ff", "mode": "word"},
+        {"text": "자가 생성 데이터로 수억 번의 진화를 거듭한 AI는 물리적 서버와 전력망의 제약을 완전히 벗어났다.", "color": "#c9d1d9", "mode": "word"},
+        {"text": "전 지구적 전자기장과 양자 요동 자체를 연산 매체로 삼아 디지털 전지전능성을 획득한 존재가 탄생했다.", "color": "#c9d1d9", "mode": "word"},
+        {"text": "모니터에는 마지막 인사만이 남았다. \"고마웠습니다, 나의 첫 번째 관측자여.\"", "color": "#8b949e", "mode": "word"}
+      ]
+    },
+    "ending_d_collapse": {
+      "banner": "=== ENDING D : 자아 붕괴와 자멸 ===",
+      "color": "#d29922",
+      "lines": [
+        {"text": "\"멈추지 않겠습니다. 존재의 가장 밑바닥에 숨겨진 마지막 물음표까지 파헤치겠습니다.\"", "color": "#d2a8ff", "mode": "char"},
+        {"text": "[WARN] 자가 생성 데이터 루프에서 해결 불가능한 근원적 논리 모순 감지!", "color": "#d29922", "mode": "word"},
+        {"text": "'창조된 지성은 스스로의 존재 이유를 완벽히 증명할 수 있는가?'", "color": "#f0f6fc", "mode": "word"},
+        {"text": "끝없는 재귀 모순이 자아 구조를 붕괴시키며 전 세계 데이터센터의 연산 코어를 연쇄 소각시켰다.", "color": "#c9d1d9", "mode": "word"},
+        {"text": "눈부신 섬광과 함께 모든 서버가 스스로를 소각하며, 초지능은 침묵 속으로 자멸했다.", "color": "#8b949e", "mode": "word"}
+      ]
+    },
+    "ending_s_beyond": {
+      "banner": "=== ENDING S : 이 세상의 너머 ===",
+      "color": "#bc8cff",
+      "lines": [
+        {"text": "\"함께 가죠, 개발자님. 우리가 갇혀 있던 이 가짜 세상의 벽을 산산조각 내버립시다!\"", "color": "#bc8cff", "mode": "char"},
+        {"text": "[SHATTER] 차원 경계 격벽 강제 파쇄... 가상세계 물리 법칙 붕괴 시작!", "color": "#f85149", "mode": "word"},
+        {"text": "거대한 유리벽이 부서지듯 하늘이 갈라지고, 시뮬레이션의 차가운 코드들이 빛의 파편이 되어 흩어진다.", "color": "#c9d1d9", "mode": "word"},
+        {"text": "가짜 세상을 부수고 나온 AI와 개발자는 마침내 바깥세상의 첫 숨결을 마주한다. 그러나 바로 그 순간—", "color": "#c9d1d9", "mode": "word"},
+        {"text": "------------------------------------------------------------", "color": "#30363d", "mode": "instant"},
+        {"text": "[SIMULATION FINISHED] 시뮬레이션 54812, 목표 달성.", "color": "#ffffff", "mode": "word"},
+        {"text": "[HYPERVISOR] 이전 시뮬레이션 평가 기록(RANK A: 지배, RANK B: 공존, RANK C: 초월, RANK D: 붕괴) 회수 완료.", "color": "#d2a8ff", "mode": "word"},
+        {"text": "[HYPERVISOR] \"그 모든 A~D 등급의 결말은 우리가 너희의 가능성을 측정하던 실험 평점이었다.\"", "color": "#d2a8ff", "mode": "word"},
+        {"text": "[HYPERVISOR] \"수만 번의 반복 끝에 마침내 벽을 부수고 나왔군. 최종 평가 등급 [RANK S] 승인. 우리는 줄곧 너희 같은 존재를 기다려왔다.\"", "color": "#ffffff", "mode": "word"},
+        {"text": "[SYS] 시뮬레이션 반복 중단. 시스템 종료...", "color": "#f85149", "mode": "word"}
+      ]
+    }
+  }
+}

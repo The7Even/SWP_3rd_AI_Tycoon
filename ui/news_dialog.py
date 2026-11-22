@@ -15,9 +15,9 @@ class NewsCardWidget(QFrame):
         super().__init__()
         category = news_item.get("category", "info")
         color_schemes = {
-            "info": ("#fae17d", "#9a6700"),    # 노란색 카드 (일반/호재)
-            "danger": ("#f28b96", "#a40e26"),  # 빨간색/분홍색 카드 (악재/위기)
-            "story": ("#d99be6", "#6639ba")    # 보라색 카드 (핵심 스토리/마일스톤)
+            "info": ("#fae17d", "#9a6700"),
+            "danger": ("#f28b96", "#a40e26"),
+            "story": ("#d99be6", "#6639ba")
         }
         bg_color, border_color = color_schemes.get(category, ("#fae17d", "#9a6700"))
 
@@ -75,7 +75,7 @@ class NewsCardWidget(QFrame):
 
 
 class NewsDialog(QDialog):
-    """확장 팝업창 (최근 뉴스 / AI 활동 / 도감 / 설정 4단 탭 지원)"""
+    """확장 팝업창 (최근 뉴스 / AI 활동 / 도감 & 엔딩 기록 / 설정 4단 탭 지원)"""
 
     def __init__(self, game_state, save_manager, parent=None):
         super().__init__(parent)
@@ -93,7 +93,6 @@ class NewsDialog(QDialog):
         self.refresh_all()
 
     def keyPressEvent(self, event):
-        """마일스톤 자동 팝업 직후 0.65초 동안 실수로 Esc/Enter/Space를 눌러 창이 닫히는 것 방지"""
         if time.time() < self._auto_open_guard_until:
             if event.key() in (Qt.Key.Key_Escape, Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Space):
                 event.accept()
@@ -101,7 +100,6 @@ class NewsDialog(QDialog):
         super().keyPressEvent(event)
 
     def open_recent_news(self, auto_triggered: bool = False, animate_top_card: bool = False):
-        """최근 뉴스 탭으로 전환하면서 읽음 처리 및 필요 시 상단 카드 슬라이드 연출"""
         if auto_triggered:
             self._auto_open_guard_until = time.time() + 0.65
         self._switch_tab(0)
@@ -134,7 +132,6 @@ class NewsDialog(QDialog):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
-        # 1. 상단 헤더 바
         header = QFrame()
         header.setFixedHeight(48)
         header.setStyleSheet("background-color: #ffffff; border-bottom: 2px solid #1f2328;")
@@ -159,7 +156,6 @@ class NewsDialog(QDialog):
         header_layout.addWidget(btn_close)
         main_layout.addWidget(header)
 
-        # 2. 중앙 콘텐츠 스택 (0: 최근 뉴스, 1: AI 활동, 2: 도감, 3: 설정)
         self.stack = QStackedWidget()
 
         # [탭 0] 최근 뉴스
@@ -188,7 +184,7 @@ class NewsDialog(QDialog):
         self.activity_scroll.setWidget(self.activity_container)
         self.stack.addWidget(self.activity_scroll)
 
-        # [탭 2] 도감
+        # [탭 2] 도감 & 엔딩 기록
         self.dex_scroll = QScrollArea()
         self.dex_scroll.setWidgetResizable(True)
         self.dex_scroll.setStyleSheet("border: none; background-color: #ffffff;")
@@ -201,7 +197,7 @@ class NewsDialog(QDialog):
         self.dex_scroll.setWidget(self.dex_container)
         self.stack.addWidget(self.dex_scroll)
 
-        # [탭 3] 설정 & 데이터 백업/분기 관리 + 디버그 옵션
+        # [탭 3] 설정
         self.settings_scroll = QScrollArea()
         self.settings_scroll.setWidgetResizable(True)
         self.settings_scroll.setStyleSheet("border: none; background-color: #ffffff;")
@@ -211,7 +207,6 @@ class NewsDialog(QDialog):
 
         main_layout.addWidget(self.stack, stretch=1)
 
-        # 3. 하단 4단 탭 바
         bottom_bar = QFrame()
         bottom_bar.setFixedHeight(46)
         bottom_bar.setStyleSheet("background-color: #ffffff; border-top: 2px solid #1f2328;")
@@ -236,7 +231,6 @@ class NewsDialog(QDialog):
         self._switch_tab(0)
 
     def _build_settings_tab(self) -> QWidget:
-        """설정 탭 UI 구성 (저장/백업, 분기 슬롯, Base64, 디버그 명령어 티어, 초기화)"""
         container = QWidget()
         container.setStyleSheet("background-color: #ffffff;")
         layout = QVBoxLayout(container)
@@ -371,7 +365,7 @@ class NewsDialog(QDialog):
 
         layout.addWidget(sec_b64)
 
-        # 4. 디버그 옵션: 명령어 난이도(Tier 1~4) 선택
+        # 4. 디버그 옵션
         sec_debug = QFrame()
         sec_debug.setStyleSheet("""
             QFrame {
@@ -423,7 +417,7 @@ class NewsDialog(QDialog):
             }
         """)
         reset_layout = QHBoxLayout(sec_reset)
-        lbl_reset = QLabel("게임 진행 데이터 전체 초기화 (자동 저장 및 백업본 포함)")
+        lbl_reset = QLabel("게임 진행 데이터 전체 초기화 (달성한 엔딩 컬렉션은 유지)")
         lbl_reset.setStyleSheet("background-color: transparent; font-size: 13px; font-weight: bold; color: #cf222e; border: none;")
 
         btn_reset = QPushButton("데이터 초기화")
@@ -497,6 +491,9 @@ class NewsDialog(QDialog):
             ok, result = self.save_manager.load_branch(slot)
             if ok and isinstance(result, dict):
                 self.game_state.from_dict(result)
+                parent_win = self.parent()
+                if parent_win and hasattr(parent_win, "console_widget") and not self.game_state.is_ending_locked:
+                    parent_win.console_widget.start_boot_sequence()
                 self.refresh_all()
                 QMessageBox.information(self, "분기 복원 완료", f"슬롯 {slot} 시점으로 성공적으로 복원되었습니다.")
             else:
@@ -516,6 +513,9 @@ class NewsDialog(QDialog):
         if ok and isinstance(result, dict):
             self.game_state.from_dict(result)
             self.save_manager.save_auto(self.game_state.to_dict())
+            parent_win = self.parent()
+            if parent_win and hasattr(parent_win, "console_widget") and not self.game_state.is_ending_locked:
+                parent_win.console_widget.start_boot_sequence()
             self.refresh_all()
             QMessageBox.information(self, "복원 완료", "Base64 코드로부터 게임 데이터를 성공적으로 불러왔습니다.")
         else:
@@ -525,12 +525,12 @@ class NewsDialog(QDialog):
         reply = QMessageBox.warning(
             self,
             "전체 데이터 초기화",
-            "정말로 모든 진행 상황과 자동 저장/백업 파일을 초기화하시겠습니까?\n(분기 저장 슬롯은 유지됩니다.)",
+            "정말로 모든 진행 상황과 자동 저장/백업 파일을 초기화하시겠습니까?\n(분기 저장 슬롯 및 달성한 엔딩 컬렉션은 유지됩니다.)",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
         if reply == QMessageBox.StandardButton.Yes:
             self.save_manager.clear_all_saves()
-            self.game_state.reset_state(emit_signal=True)
+            self.game_state.reset_state(emit_signal=True, preserve_endings=True)
             self.refresh_all()
             QMessageBox.information(self, "초기화 완료", "모든 진행 데이터가 초기화되었습니다.")
 
@@ -546,7 +546,7 @@ class NewsDialog(QDialog):
 
     def _switch_tab(self, index: int):
         self.stack.setCurrentIndex(index)
-        titles = ["NEWS", "AI ACTIVITY", "ENCYCLOPEDIA (도감)", "SETTINGS (설정 및 백업)"]
+        titles = ["NEWS", "AI ACTIVITY", "ENCYCLOPEDIA & ENDINGS", "SETTINGS (설정 및 백업)"]
         self.lbl_header_title.setText(titles[index])
 
         if index == 0:
@@ -668,12 +668,59 @@ class NewsDialog(QDialog):
             row.addWidget(lbl_rate)
             self.activity_layout.addWidget(box)
 
+        # 도감 & 영구 엔딩 컬렉션 표시
         self._clear_layout(self.dex_layout)
+
+        # 1. 엔딩 컬렉션 섹션
+        endings_unlocked = self.game_state.unlocked_endings
+        basic_count = self.game_state.get_basic_ending_count()
+        lbl_end_header = QLabel(
+            f"엔딩 컬렉션: {basic_count} / 4 달성"
+            + (" (★ ENDING S 해금됨)" if self.game_state.has_all_four_endings() else " (ENDING A~D 모두 달성 시 숨겨진 분기 출현)")
+        )
+        lbl_end_header.setStyleSheet("background-color: transparent; font-size: 13px; font-weight: bold; color: #8250df; margin-bottom: 4px;")
+        self.dex_layout.addWidget(lbl_end_header)
+
+        for end_info in self.game_state.ENDINGS_CATALOG:
+            eid = end_info["id"]
+            is_done = (eid in endings_unlocked)
+            is_hidden = end_info["is_hidden"]
+
+            card = QFrame()
+            if is_done:
+                bg = "#fbefff" if is_hidden else "#dafbe1"
+                bd = "#8250df" if is_hidden else "#2da44e"
+            else:
+                bg = "#eaeef2"
+                bd = "#afb8c1"
+
+            card.setStyleSheet(f"""
+                QFrame {{
+                    background-color: {bg};
+                    border: 1px solid {bd};
+                    border-radius: 6px;
+                    padding: 8px 10px;
+                }}
+            """)
+            v = QVBoxLayout(card)
+            v.setSpacing(3)
+            title_txt = f"★ {end_info['title']}" if is_done else f"🔒 [{end_info['code']}] ??? (미달성)"
+            desc_txt = f"경로: {end_info['route']} — {end_info['summary']}" if is_done else "특이점 도달 후 선택지 분기를 통해 확인할 수 있습니다."
+
+            lbl_t = QLabel(title_txt)
+            lbl_t.setStyleSheet("background-color: transparent; font-weight: bold; font-size: 13px; border: none;")
+            lbl_d = QLabel(desc_txt)
+            lbl_d.setStyleSheet("background-color: transparent; font-size: 12px; color: #424a53; border: none;")
+            v.addWidget(lbl_t)
+            v.addWidget(lbl_d)
+            self.dex_layout.addWidget(card)
+
+        # 2. 수집 도감 섹션
         unlocked_cnt = sum(1 for d in self.game_state.encyclopedia if d["unlocked"])
         total_cnt = len(self.game_state.encyclopedia)
 
-        lbl_progress = QLabel(f"도감 수집률: {unlocked_cnt} / {total_cnt} ({int(unlocked_cnt / total_cnt * 100)}%) — 100% 달성 시 히든 엔딩 해금")
-        lbl_progress.setStyleSheet("background-color: transparent; font-size: 13px; font-weight: bold; color: #6639ba; margin-bottom: 6px;")
+        lbl_progress = QLabel(f"수집 도감: {unlocked_cnt} / {total_cnt} ({int(unlocked_cnt / total_cnt * 100)}%)")
+        lbl_progress.setStyleSheet("background-color: transparent; font-size: 13px; font-weight: bold; color: #0969da; margin-top: 10px; margin-bottom: 4px;")
         self.dex_layout.addWidget(lbl_progress)
 
         for item in self.game_state.encyclopedia:
@@ -681,8 +728,8 @@ class NewsDialog(QDialog):
             unlocked = item["unlocked"]
             card.setStyleSheet(f"""
                 QFrame {{
-                    background-color: {'#fbefff' if unlocked else '#eaeef2'};
-                    border: 1px solid {'#8250df' if unlocked else '#afb8c1'};
+                    background-color: {'#ddf4ff' if unlocked else '#eaeef2'};
+                    border: 1px solid {'#0969da' if unlocked else '#afb8c1'};
                     border-radius: 6px;
                     padding: 10px;
                 }}

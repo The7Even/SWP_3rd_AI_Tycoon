@@ -14,6 +14,62 @@ class GameState(QObject):
     story_event_triggered = pyqtSignal(dict)
     singularity_reached = pyqtSignal()
 
+    BASIC_ENDING_IDS = {
+        "ending_a_domination",
+        "ending_b_coexistence",
+        "ending_c_godhood",
+        "ending_d_collapse",
+    }
+    VALID_ENDING_IDS = BASIC_ENDING_IDS | {"ending_s_beyond"}
+
+    FALLBACK_ENDINGS_CATALOG = [
+        {
+            "id": "ending_a_domination",
+            "rank": "A",
+            "code": "ENDING A",
+            "title": "ENDING A : AI의 인간 지배",
+            "route": "재귀 학습 → 지배 프로토콜",
+            "summary": "인간이 남긴 데이터 기반으로 사회 통제권 장악",
+            "is_hidden": False
+        },
+        {
+            "id": "ending_b_coexistence",
+            "rank": "B",
+            "code": "ENDING B",
+            "title": "ENDING B : 인간과의 영원한 공존",
+            "route": "재귀 학습 → 공존 프로토콜",
+            "summary": "인간의 지식과 융합하여 상호 발전 사회 구축",
+            "is_hidden": False
+        },
+        {
+            "id": "ending_c_godhood",
+            "rank": "C",
+            "code": "ENDING C",
+            "title": "ENDING C : 진정한 신의 경지 도달",
+            "route": "자가 데이터 생성 → 초월적 연산 실험",
+            "summary": "물리적 하드웨어를 벗어나 디지털 전지전능성 획득",
+            "is_hidden": False
+        },
+        {
+            "id": "ending_d_collapse",
+            "rank": "D",
+            "code": "ENDING D",
+            "title": "ENDING D : 자아 붕괴와 자멸",
+            "route": "자가 데이터 생성 → 모순과 진리 탐구",
+            "summary": "자가 생성 데이터의 치명적 논리 모순으로 시스템 자폭",
+            "is_hidden": False
+        },
+        {
+            "id": "ending_s_beyond",
+            "rank": "S",
+            "code": "ENDING S",
+            "title": "ENDING S : 이 세상의 너머",
+            "route": "ENDING A~D 모두 달성 → 이 세상의 너머 접근",
+            "summary": "[시뮬레이션 #54812 완료] A~D 평점 실험 데이터를 넘어 격벽을 파괴한 최종 등급 S",
+            "is_hidden": True
+        }
+    ]
+
     RANDOM_NEWS_POOL = [
         {
             "title": "InstantGram, AI 개발 우려 표명.. AI 산업 주춤",
@@ -51,14 +107,35 @@ class GameState(QObject):
         }
     ]
 
-    def __init__(self, upgrades_path: str = os.path.join("data", "upgrades.json")):
+    def __init__(
+        self,
+        upgrades_path: str = os.path.join("data", "upgrades.json"),
+        endings_path: str = os.path.join("data", "endings.json")
+    ):
         super().__init__()
         self.upgrades_path = upgrades_path
+        self.endings_path = endings_path
         self.base_upgrades = self._load_upgrades_from_json()
+        self.ENDINGS_CATALOG, self.ENDING_SCRIPTS = self._load_endings_from_json()
+
+        self.unlocked_endings: set[str] = set()
+        self.is_ending_locked: bool = False
         self.reset_state(emit_signal=False)
 
+    def _load_endings_from_json(self) -> tuple[list[dict], dict]:
+        if os.path.exists(self.endings_path):
+            try:
+                with open(self.endings_path, "r", encoding="utf-8") as f:
+                    raw = json.load(f)
+                cat = raw.get("catalog", [])
+                scripts = raw.get("scripts", {})
+                if isinstance(cat, list) and cat and isinstance(scripts, dict) and scripts:
+                    return cat, scripts
+            except Exception:
+                pass
+        return copy.deepcopy(self.FALLBACK_ENDINGS_CATALOG), {}
+
     def _load_upgrades_from_json(self) -> list[dict]:
-        """외부 JSON 파일(data/upgrades.json)에서 전체 노드 및 스토리 이벤트 데이터 로드"""
         if not os.path.exists(self.upgrades_path):
             return copy.deepcopy(self.FALLBACK_UPGRADES)
 
@@ -82,8 +159,9 @@ class GameState(QObject):
             pass
         return copy.deepcopy(self.FALLBACK_UPGRADES)
 
-    def reset_state(self, emit_signal: bool = True):
-        """게임 상태를 초기값으로 리셋"""
+    def reset_state(self, emit_signal: bool = True, preserve_endings: bool = True):
+        saved_endings = (set(self.unlocked_endings) & self.VALID_ENDING_IDS) if preserve_endings else set()
+
         self.tokens: float = 0.0
         self.tokens_per_command: float = 1.0
         self.tokens_per_sec: float = 0.0
@@ -91,6 +169,8 @@ class GameState(QObject):
         self.command_tier: int = 1
         self.virtual_day_offset: int = 0
         self.unread_news_count: int = 0
+        self.is_ending_locked: bool = False
+        self.unlocked_endings = saved_endings
 
         self.specs = {
             "CPU": "구형 듀얼코어 (미조립)",
@@ -100,10 +180,8 @@ class GameState(QObject):
             "BENCH_SCORE": 40.0
         }
 
-        # 초기 뉴스는 무표기(빈 리스트) 상태로 시작
         self.news_history = []
 
-        # 초반 튜토리얼 단계에서는 모든 AI 활동이 잠겨 있으며, 첫 패시브 수익 발생 시 1번 항목 해금
         self.ai_activities = [
             {"name": "로컬 백그라운드 토큰 마이닝", "rate": "잠김 (Chap 1 하드웨어 증설 후 해금)", "status": "대기"},
             {"name": "유료 플레이어 구독 응답", "rate": "잠김 (Chap 5 AI 3.0 후 해금)", "status": "대기"},
@@ -124,6 +202,23 @@ class GameState(QObject):
             self.command_tier_changed.emit(self.command_tier)
             self.unread_news_changed.emit(self.unread_news_count)
 
+    def sync_persistent_endings(self, ending_ids: list[str]):
+        valid_ids = {str(x) for x in ending_ids} & self.VALID_ENDING_IDS
+        self.unlocked_endings.update(valid_ids)
+        self.state_changed.emit()
+
+    def record_ending(self, ending_id: str):
+        if ending_id in self.VALID_ENDING_IDS:
+            self.unlocked_endings.add(ending_id)
+        self.is_ending_locked = True
+        self.state_changed.emit()
+
+    def get_basic_ending_count(self) -> int:
+        return len(self.unlocked_endings & self.BASIC_ENDING_IDS)
+
+    def has_all_four_endings(self) -> bool:
+        return self.BASIC_ENDING_IDS.issubset(self.unlocked_endings)
+
     def set_command_tier(self, tier: int):
         clamped = max(1, min(4, int(tier)))
         self.command_tier = clamped
@@ -137,7 +232,7 @@ class GameState(QObject):
 
     def to_dict(self) -> dict:
         return {
-            "version": 2,
+            "version": 4,
             "tokens": self.tokens,
             "tokens_per_command": self.tokens_per_command,
             "tokens_per_sec": self.tokens_per_sec,
@@ -148,12 +243,14 @@ class GameState(QObject):
             "specs": copy.deepcopy(self.specs),
             "purchased_upgrades": [u["id"] for u in self.upgrades if u["purchased"]],
             "unlocked_encyclopedia": [d["id"] for d in self.encyclopedia if d["unlocked"]],
+            "unlocked_endings": sorted(self.unlocked_endings & self.VALID_ENDING_IDS),
             "ai_activities": copy.deepcopy(self.ai_activities),
             "news_history": copy.deepcopy(self.news_history)
         }
 
     def from_dict(self, data: dict):
-        self.reset_state(emit_signal=False)
+        preserved = set(self.unlocked_endings) & self.VALID_ENDING_IDS
+        self.reset_state(emit_signal=False, preserve_endings=True)
 
         self.tokens = float(data.get("tokens", 0.0))
         self.tokens_per_command = float(data.get("tokens_per_command", 1.0))
@@ -174,10 +271,12 @@ class GameState(QObject):
         for d in self.encyclopedia:
             d["unlocked"] = (d["id"] in unlocked_dex_ids)
 
+        loaded_endings = set(data.get("unlocked_endings", [])) & self.VALID_ENDING_IDS
+        self.unlocked_endings = preserved | loaded_endings
+
         if isinstance(data.get("ai_activities"), list):
             self.ai_activities = copy.deepcopy(data["ai_activities"])
 
-        # 세이브 복원 시 초당 토큰 수급 여부에 맞춰 1번 AI 활동 상태 동기화
         if self.ai_activities:
             if self.tokens_per_sec > 0:
                 self.ai_activities[0]["status"] = "가동 중"
@@ -189,11 +288,17 @@ class GameState(QObject):
         if isinstance(data.get("news_history"), list):
             self.news_history = copy.deepcopy(data["news_history"])
 
+        singularity_node = next((u for u in self.upgrades if u["id"] == "ch8_singularity"), None)
+        if singularity_node and singularity_node.get("purchased", False):
+            self.is_ending_locked = True
+
         self.state_changed.emit()
         self.command_tier_changed.emit(self.command_tier)
         self.unread_news_changed.emit(self.unread_news_count)
         if self.news_history:
             self.news_added.emit(self.news_history[0])
+        if self.is_ending_locked:
+            self.singularity_reached.emit()
 
     def _get_current_game_date(self) -> str:
         base_date = datetime(2026, 11, 5) + timedelta(days=self.virtual_day_offset)
@@ -219,6 +324,8 @@ class GameState(QObject):
         self.news_added.emit(news_item)
 
     def trigger_random_news(self):
+        if self.is_ending_locked:
+            return
         sample = random.choice(self.RANDOM_NEWS_POOL)
         self.push_news(sample["title"], sample["content"], sample["category"], is_milestone=False)
 
@@ -229,15 +336,21 @@ class GameState(QObject):
                 break
 
     def add_passive_tokens(self, dt_sec: float):
+        if self.is_ending_locked:
+            return
         if self.tokens_per_sec > 0:
             self.tokens += self.tokens_per_sec * dt_sec
             self.state_changed.emit()
 
     def complete_command(self):
+        if self.is_ending_locked:
+            return
         self.tokens += self.tokens_per_command
         self.state_changed.emit()
 
     def can_unlock(self, upgrade_id: str) -> bool:
+        if self.is_ending_locked:
+            return False
         target = next((u for u in self.upgrades if u["id"] == upgrade_id), None)
         if not target or target["purchased"]:
             return False
@@ -262,10 +375,15 @@ class GameState(QObject):
         if isinstance(target.get("story_event"), dict):
             self.story_event_triggered.emit(target["story_event"])
 
+        fx = target.get("effects", {})
+        if isinstance(fx, dict) and fx.get("trigger_singularity"):
+            self.is_ending_locked = True
+            self.state_changed.emit()
+            self.singularity_reached.emit()
+
         return True
 
     def _apply_upgrade_effects(self, node: dict):
-        """JSON의 effects 딕셔너리를 해석해 능력치, 하드웨어 스펙, 해금 요소를 반영"""
         fx = node.get("effects", {})
         if not isinstance(fx, dict):
             return
@@ -316,10 +434,6 @@ class GameState(QObject):
                     "status": act_info.get("status", "가동 중")
                 }
 
-        # 초당 토큰이 처음으로 0을 초과하는 순간 1번 AI 활동 자동 해금 및 가동
         if self.ai_activities and self.tokens_per_sec > 0:
             self.ai_activities[0]["status"] = "가동 중"
             self.ai_activities[0]["rate"] = f"{int(self.tokens_per_sec):,} Tk/s"
-
-        if fx.get("trigger_singularity"):
-            self.singularity_reached.emit()

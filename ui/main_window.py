@@ -181,7 +181,6 @@ class MiniNewsTickerWidget(QWidget):
             self.card_2.hide()
 
     def set_guide_items(self, line1: str, line2: str):
-        """튜토리얼 기간 동안 안내 카드 2줄 표시"""
         self._is_guide_mode = True
         if self._anim_group and self._anim_group.state() == QPropertyAnimation.State.Running:
             self._anim_group.stop()
@@ -190,7 +189,6 @@ class MiniNewsTickerWidget(QWidget):
         self._snap_positions()
 
     def set_initial_items(self, history: list[dict]):
-        """본편 뉴스 모드로 전환 및 초기 카드 배치"""
         self._is_guide_mode = False
         if self._anim_group and self._anim_group.state() == QPropertyAnimation.State.Running:
             self._anim_group.stop()
@@ -199,7 +197,6 @@ class MiniNewsTickerWidget(QWidget):
         self._snap_positions()
 
     def push_animated_item(self, new_item: dict, prev_top_item: dict | None):
-        """새 뉴스는 오른쪽 바깥에서 슬라이드 인, 기존 1번 뉴스는 2번 위치로 하강 이동"""
         if self._is_guide_mode:
             return
 
@@ -255,7 +252,6 @@ class MainWindow(QMainWindow):
         self.news_dialog = None
         self._was_tutorial_active = True
 
-        # 시그널 연결 및 초기 세이브 로드 전에 알림 타이머를 먼저 생성
         self.news_toast_timer = QTimer(self)
         self.news_toast_timer.setSingleShot(True)
 
@@ -263,20 +259,19 @@ class MainWindow(QMainWindow):
         self.news_toast_timer.timeout.connect(lambda: self.lbl_news_toast.hide())
         self._connect_signals()
 
-        # 시작 시 기존 세이브 파일 로드 및 손상/백업 예외 처리
+        # 영구 엔딩 기록 로드 후 세이브 복원
+        persistent_endings = self.save_manager.load_unlocked_endings()
+        self.game_state.sync_persistent_endings(persistent_endings)
         self._load_initial_save()
 
-        # 0.1초(100ms) 주기 패시브 토큰 수급 타이머
         self.passive_timer = QTimer(self)
         self.passive_timer.timeout.connect(self._on_tick)
         self.passive_timer.start(100)
 
-        # 25초 주기 상시 랜덤 뉴스 발생 타이머 (본편 진입 후에만 기사 발행)
         self.news_timer = QTimer(self)
         self.news_timer.timeout.connect(self._on_random_news_tick)
         self.news_timer.start(25000)
 
-        # 30초 주기 자동 저장 및 백업 타이머
         self.autosave_timer = QTimer(self)
         self.autosave_timer.timeout.connect(self._on_autosave_tick)
         self.autosave_timer.start(30000)
@@ -286,14 +281,13 @@ class MainWindow(QMainWindow):
         self._update_unread_badge(self.game_state.unread_news_count)
 
     def _is_tutorial_active(self) -> bool:
-        """ch1_start(AI 개발 착수) 구매 전까지를 튜토리얼 구간으로 판별"""
         ch1_node = next((u for u in self.game_state.upgrades if u["id"] == "ch1_start"), None)
         if not ch1_node:
             return False
         return not ch1_node.get("purchased", False)
 
     def _on_random_news_tick(self):
-        if not self._is_tutorial_active():
+        if not self._is_tutorial_active() and not self.game_state.is_ending_locked:
             self.game_state.trigger_random_news()
 
     def _load_initial_save(self):
@@ -314,7 +308,7 @@ class MainWindow(QMainWindow):
                 "세이브 파일과 백업 파일이 모두 손상되어 데이터를 복구할 수 없습니다.\n새로운 게임 상태로 초기화하여 시작합니다."
             )
             self.save_manager.clear_all_saves()
-            self.game_state.reset_state(emit_signal=False)
+            self.game_state.reset_state(emit_signal=False, preserve_endings=True)
 
     def _on_autosave_tick(self):
         ok, msg = self.save_manager.save_auto(self.game_state.to_dict())
@@ -333,7 +327,6 @@ class MainWindow(QMainWindow):
                     self.autosave_timer.start(30000)
 
     def closeEvent(self, event):
-        """프로그램 종료 시 자동 저장 수행"""
         self.save_manager.save_auto(self.game_state.to_dict())
         event.accept()
 
@@ -351,7 +344,6 @@ class MainWindow(QMainWindow):
         left_layout.setContentsMargins(0, 0, 0, 0)
         left_layout.setSpacing(0)
 
-        # 1. 상단 재화 표시 바
         top_bar = QFrame()
         top_bar.setFixedHeight(50)
         top_bar.setStyleSheet("background-color: #ffffff; border-bottom: 2px solid #d0d7de;")
@@ -370,11 +362,9 @@ class MainWindow(QMainWindow):
         top_layout.addWidget(self.lbl_rates)
         left_layout.addWidget(top_bar)
 
-        # 2. 중앙 가상 콘솔 영역
         self.console_widget = VirtualConsoleWidget(self.game_state)
         left_layout.addWidget(self.console_widget, stretch=1)
 
-        # 3. 하단 정보 영역 (좌: Specs / 우: GUIDE -> NEWS)
         bottom_bar = QFrame()
         bottom_bar.setFixedHeight(155)
         bottom_bar.setStyleSheet("background-color: #ffffff; border-top: 2px solid #d0d7de;")
@@ -382,7 +372,6 @@ class MainWindow(QMainWindow):
         bottom_layout.setContentsMargins(0, 0, 0, 0)
         bottom_layout.setSpacing(0)
 
-        # 3-1. 하단 좌측: 하드웨어 스펙 및 벤치마크 점수
         specs_box = QWidget()
         specs_layout = QVBoxLayout(specs_box)
         specs_layout.setContentsMargins(12, 8, 12, 8)
@@ -397,7 +386,6 @@ class MainWindow(QMainWindow):
         specs_layout.addWidget(self.lbl_bench)
         bottom_layout.addWidget(specs_box, stretch=1)
 
-        # 3-2. 하단 우측: DEV GUIDE / NEWS 패널
         news_box = QFrame()
         news_box.setStyleSheet("border-left: 2px solid #d0d7de;")
         news_layout = QVBoxLayout(news_box)
@@ -410,7 +398,6 @@ class MainWindow(QMainWindow):
         self.lbl_news_title = QLabel("DEV GUIDE")
         self.lbl_news_title.setStyleSheet("font-size: 15px; font-weight: bold; color: #0969da; border: none;")
 
-        # NEWS 글자 옆 안 읽은 뉴스 숫자 빨간 배지
         self.lbl_unread_badge = QLabel("0")
         self.lbl_unread_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.lbl_unread_badge.setFixedHeight(20)
@@ -426,7 +413,6 @@ class MainWindow(QMainWindow):
         """)
         self.lbl_unread_badge.hide()
 
-        # 새 뉴스 도착 시 3초간 잠깐 뜨는 짧은 도착 알림
         self.lbl_news_toast = QLabel("새 뉴스 도착")
         self.lbl_news_toast.setStyleSheet("""
             background-color: #ddf4ff;
@@ -452,7 +438,6 @@ class MainWindow(QMainWindow):
         news_header.addWidget(self.btn_news_expand)
         news_layout.addLayout(news_header)
 
-        # 가이드 / 뉴스 2단 티커 영역
         self.mini_news_ticker = MiniNewsTickerWidget()
         news_layout.addWidget(self.mini_news_ticker, stretch=1)
         bottom_layout.addWidget(news_box, stretch=1)
@@ -469,16 +454,47 @@ class MainWindow(QMainWindow):
         self.game_state.news_added.connect(self._on_news_added)
         self.game_state.unread_news_changed.connect(self._update_unread_badge)
         self.game_state.story_event_triggered.connect(self._on_story_event_triggered)
+        self.game_state.singularity_reached.connect(self._on_singularity_reached)
+
+        self.console_widget.ending_completed.connect(self._on_ending_completed)
+        self.console_widget.request_load_branch.connect(self._on_console_load_branch)
+        self.console_widget.request_reset_game.connect(self._on_console_reset_game)
 
     def _on_story_event_triggered(self, story_data: dict):
         dlg = StoryEventDialog(story_data, self)
         dlg.exec()
 
+    def _on_singularity_reached(self):
+        """Chap 8 특이점 도달 시 콘솔을 AI 1대1 독대 모드로 전환"""
+        self.console_widget.start_singularity_dialogue()
+
+    def _on_ending_completed(self, ending_id: str):
+        """엔딩 도달 시 영구 엔딩 기록 저장"""
+        self.game_state.record_ending(ending_id)
+        self.save_manager.save_unlocked_endings(list(self.game_state.unlocked_endings))
+        self.save_manager.save_auto(self.game_state.to_dict())
+
+    def _on_console_load_branch(self, slot: int):
+        ok, result = self.save_manager.load_branch(slot)
+        if ok and isinstance(result, dict):
+            self.game_state.from_dict(result)
+            if not self.game_state.is_ending_locked:
+                self.console_widget.start_boot_sequence()
+            self._sync_bottom_right_panel(force=True)
+            QMessageBox.information(self, "분기 복원 완료", f"분기 슬롯 {slot} 시점으로 복원되었습니다.")
+        else:
+            QMessageBox.warning(self, "불러오기 실패", str(result))
+
+    def _on_console_reset_game(self):
+        self.save_manager.clear_all_saves()
+        self.game_state.reset_state(emit_signal=True, preserve_endings=True)
+        self.console_widget.start_boot_sequence()
+        self._sync_bottom_right_panel(force=True)
+
     def _on_tick(self):
         self.game_state.add_passive_tokens(0.1)
 
     def _sync_bottom_right_panel(self, force: bool = False):
-        """튜토리얼 중에는 DEV GUIDE를, 본편 진입 후에는 NEWS 패널을 표시"""
         is_tut = self._is_tutorial_active()
         upg_map = {u["id"]: u["purchased"] for u in self.game_state.upgrades}
 
@@ -536,11 +552,11 @@ class MainWindow(QMainWindow):
         )
         self.lbl_bench.setText(f"BENCH_SCORE : {format_number(s['BENCH_SCORE'])}")
 
-        # 완전 초기화 감지 시 콘솔 컴파일 부팅 연출 재실행
         if (
             gs.tokens == 0
             and not gs.news_history
             and not any(u["purchased"] for u in gs.upgrades)
+            and not gs.is_ending_locked
             and self.console_widget._boot_step >= len(self.console_widget.BOOT_SEQUENCE)
         ):
             self.console_widget.start_boot_sequence()

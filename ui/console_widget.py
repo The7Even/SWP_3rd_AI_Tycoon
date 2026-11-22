@@ -2,10 +2,11 @@ import os
 import json
 import time
 import random
-from PyQt6.QtWidgets import QFrame, QVBoxLayout, QTextEdit, QLabel
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtWidgets import QFrame, QVBoxLayout, QTextEdit, QLabel, QWidget
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QTextCursor
 from core.number_format import format_number
+from ui.singularity_controller import SingularityDialogueController
 
 
 class InlinePromptBox(QTextEdit):
@@ -23,10 +24,9 @@ class InlinePromptBox(QTextEdit):
         self.setCursor(Qt.CursorShape.IBeamCursor)
 
     def keyPressEvent(self, event):
-        if self.console.is_booting:
+        if self.console.is_booting or self.console.is_dialogue_mode:
             return
 
-        # Ctrl+V / Shift+Insert 붙여넣기 차단
         if (event.modifiers() & Qt.KeyboardModifier.ControlModifier) and event.key() == Qt.Key.Key_V:
             self.console.show_feedback("붙여넣기는 허용되지 않습니다.", is_error=True)
             return
@@ -57,8 +57,22 @@ class InlinePromptBox(QTextEdit):
         super().keyPressEvent(event)
 
 
+class ClickableLogView(QTextEdit):
+    """독대/엔딩 연출 중 클릭 시 현재 줄 출력이나 대기 연출을 즉시 완료하는 로그 뷰"""
+
+    clicked = pyqtSignal()
+
+    def mousePressEvent(self, event):
+        super().mousePressEvent(event)
+        self.clicked.emit()
+
+
 class VirtualConsoleWidget(QFrame):
-    """상단 로그 출력창 + 하단 초록 테두리 인라인 고스트 입력 박스를 갖춘 가상 콘솔"""
+    """경량화된 가상 콘솔 위젯 (평상시 명령어 입력 담당, 특이점 이후는 SingularityDialogueController에 위임)"""
+
+    ending_completed = pyqtSignal(str)
+    request_load_branch = pyqtSignal(int)
+    request_reset_game = pyqtSignal()
 
     DEFAULT_COMMANDS = {
         "1": [
@@ -102,9 +116,16 @@ class VirtualConsoleWidget(QFrame):
 
         self.current_cmd_entry: dict = {"cmd": "", "output": ""}
         self.typed_text = ""
+        self._log_lines_html: list[str] = []
 
         self.setStyleSheet("VirtualConsoleWidget { background-color: #0d1117; border: none; }")
         self._init_ui()
+
+        # 특이점 1대1 독대 및 엔딩 연출 전담 컨트롤러 연결
+        self.singularity_ctrl = SingularityDialogueController(self, self.game_state)
+        self.singularity_ctrl.ending_completed.connect(self.ending_completed)
+        self.singularity_ctrl.request_load_branch.connect(self.request_load_branch)
+        self.singularity_ctrl.request_reset_game.connect(self.request_reset_game)
 
         self.feedback_timer = QTimer(self)
         self.feedback_timer.setSingleShot(True)
@@ -119,8 +140,11 @@ class VirtualConsoleWidget(QFrame):
 
         self.start_boot_sequence()
 
+    @property
+    def is_dialogue_mode(self) -> bool:
+        return self.singularity_ctrl.is_active
+
     def _normalize_cmd_item(self, item) -> dict | None:
-        """commands.json 항목이 문자열이든 딕셔너리(cmd + output/response/log)든 통일된 형태로 변환"""
         if isinstance(item, str) and item.strip():
             return {"cmd": item.strip(), "output": "[RUNTIME] 명령어 실행 사이클 완료"}
         if isinstance(item, dict):
@@ -167,8 +191,7 @@ class VirtualConsoleWidget(QFrame):
         layout.setContentsMargins(14, 14, 14, 12)
         layout.setSpacing(8)
 
-        # 1. 상단 콘솔 로그 출력창
-        self.log_view = QTextEdit()
+        self.log_view = ClickableLogView()
         self.log_view.setReadOnly(True)
         self.log_view.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.log_view.setStyleSheet("""
@@ -181,21 +204,34 @@ class VirtualConsoleWidget(QFrame):
                 padding: 4px;
             }
         """)
+        self.log_view.clicked.connect(self._on_console_clicked)
         layout.addWidget(self.log_view, stretch=1)
 
-        # 2. 하단 인라인 고스트 입력 박스
         self.prompt_box = InlinePromptBox(self)
         self._apply_prompt_border("#2da44e")
         layout.addWidget(self.prompt_box)
 
-        # 3. 최하단 미니멀 상태 라벨
+        self.dialogue_panel = QWidget()
+        self.dialogue_panel.setStyleSheet("background-color: #0d1117;")
+        self.dialogue_vbox = QVBoxLayout(self.dialogue_panel)
+        self.dialogue_vbox.setContentsMargins(0, 4, 0, 2)
+        self.dialogue_vbox.setSpacing(8)
+        self.dialogue_panel.hide()
+        layout.addWidget(self.dialogue_panel)
+
         self.lbl_status = QLabel(f"Latency: {self.game_state.input_cooldown_ms}ms")
         self.lbl_status.setStyleSheet("color: #8b949e; font-size: 12px; padding-left: 2px;")
         layout.addWidget(self.lbl_status)
 
     def mousePressEvent(self, event):
         super().mousePressEvent(event)
-        self.prompt_box.setFocus()
+        self._on_console_clicked()
+
+    def _on_console_clicked(self):
+        if self.is_dialogue_mode:
+            self.singularity_ctrl.skip_current_step()
+        else:
+            self.prompt_box.setFocus()
 
     def _apply_prompt_border(self, border_color: str):
         self.prompt_box.setStyleSheet(f"""
@@ -210,10 +246,55 @@ class VirtualConsoleWidget(QFrame):
             }}
         """)
 
-    def start_boot_sequence(self):
-        """초기 컴파일 및 커널 부팅 로그 시퀀스 실행"""
-        self.boot_timer.stop()
+    def scroll_to_bottom(self):
+        self.log_view.moveCursor(QTextCursor.MoveOperation.End)
+        sb = self.log_view.verticalScrollBar()
+        if sb:
+            sb.setValue(sb.maximum())
+
+    def clear_logs(self):
+        self._log_lines_html.clear()
         self.log_view.clear()
+
+    def append_log(self, text: str, color: str = "#c9d1d9", bold: bool = False):
+        line_html = self.format_line_html(text, color, bold)
+        self._log_lines_html.append(line_html)
+        if len(self._log_lines_html) > 120:
+            self._log_lines_html.pop(0)
+        self.render_log_view()
+
+    def format_line_html(self, text: str, color: str, bold: bool = False, cursor_suffix: str = "") -> str:
+        if not text and not cursor_suffix:
+            return "&nbsp;"
+        escaped = self._escape_html(text)
+        weight = "font-weight:bold;" if bold else ""
+        return f'<span style="color:{color};{weight}">{escaped}</span>{cursor_suffix}'
+
+    def render_log_view(self, active_line_html: str | None = None):
+        lines = list(self._log_lines_html)
+        if active_line_html is not None:
+            lines.append(active_line_html)
+        self.log_view.setHtml("<br>".join(lines))
+        self.scroll_to_bottom()
+
+    def _escape_html(self, s: str) -> str:
+        return (
+            s.replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace(" ", "&nbsp;")
+        )
+
+    # ==================== 일반 부팅 & 명령어 타이핑 ====================
+    def start_boot_sequence(self):
+        self.boot_timer.stop()
+        self.feedback_timer.stop()
+        self.singularity_ctrl.stop_all()
+
+        self.dialogue_panel.hide()
+        self.prompt_box.show()
+        self.clear_logs()
+
         self.is_booting = True
         self._boot_step = 0
         self._last_cooldown_ms = self.game_state.input_cooldown_ms
@@ -221,6 +302,12 @@ class VirtualConsoleWidget(QFrame):
         self.typed_text = ""
         self._render_prompt_box()
         self._step_boot_sequence()
+
+    def start_singularity_dialogue(self):
+        self.boot_timer.stop()
+        self.feedback_timer.stop()
+        self.is_booting = False
+        self.singularity_ctrl.start()
 
     def _step_boot_sequence(self):
         if self._boot_step < len(self.BOOT_SEQUENCE):
@@ -234,20 +321,6 @@ class VirtualConsoleWidget(QFrame):
             self._reset_prompt_border()
             self._pick_next_command()
             self.prompt_box.setFocus()
-
-    def append_log(self, text: str, color: str = "#c9d1d9"):
-        escaped = self._escape_html(text)
-        self.log_view.moveCursor(QTextCursor.MoveOperation.End)
-        self.log_view.insertHtml(f'<span style="color:{color};">{escaped}</span><br>')
-        self.log_view.moveCursor(QTextCursor.MoveOperation.End)
-
-    def _escape_html(self, s: str) -> str:
-        return (
-            s.replace("&", "&amp;")
-            .replace("<", "&lt;")
-            .replace(">", "&gt;")
-            .replace(" ", "&nbsp;")
-        )
 
     @property
     def current_target(self) -> str:
@@ -271,10 +344,8 @@ class VirtualConsoleWidget(QFrame):
         remain_idx = len(self.typed_text)
 
         html = '<span style="color:#3fb950; font-weight:bold;">&gt;&nbsp;</span>'
-
         if ok_part:
             html += f'<span style="color:#3fb950; font-weight:bold;">{ok_part}</span>'
-
         if err_part:
             html += f'<span style="color:#ffffff; background-color:#da3633; font-weight:bold;">{err_part}</span>'
 
@@ -290,10 +361,12 @@ class VirtualConsoleWidget(QFrame):
         self.prompt_box.setHtml(html)
 
     def _on_tier_changed(self, _new_tier: int):
-        if not self.is_booting:
+        if not self.is_booting and not self.is_dialogue_mode:
             self._pick_next_command()
 
     def _on_state_updated(self):
+        if self.is_dialogue_mode:
+            return
         cur_cd = self.game_state.input_cooldown_ms
         if cur_cd != self._last_cooldown_ms:
             if cur_cd < self._last_cooldown_ms:
@@ -321,26 +394,18 @@ class VirtualConsoleWidget(QFrame):
 
     def handle_char_input(self, ch: str):
         target = self.current_target
-        if not target:
-            return
-        if len(self.typed_text) >= len(target) + 6:
+        if not target or len(self.typed_text) >= len(target) + 6:
             return
 
         self.typed_text += ch
-        if target.startswith(self.typed_text):
-            self._apply_prompt_border("#2da44e")
-        else:
-            self._apply_prompt_border("#f85149")
+        self._apply_prompt_border("#2da44e" if target.startswith(self.typed_text) else "#f85149")
         self._render_prompt_box()
 
     def handle_backspace(self):
         if not self.typed_text:
             return
         self.typed_text = self.typed_text[:-1]
-        if self.current_target.startswith(self.typed_text):
-            self._apply_prompt_border("#2da44e")
-        else:
-            self._apply_prompt_border("#f85149")
+        self._apply_prompt_border("#2da44e" if self.current_target.startswith(self.typed_text) else "#f85149")
         self._render_prompt_box()
 
     def handle_enter(self):
@@ -363,19 +428,22 @@ class VirtualConsoleWidget(QFrame):
             self.show_feedback("오타가 있거나 명령어가 완성되지 않았습니다.", is_error=True)
 
     def on_cooldown_blocked(self, cooldown_ms: int):
-        """200ms 입력 지연(쿨다운) 충돌 시 입력 박스 테두리 주황색 피드백"""
         self._apply_prompt_border("#d29922")
         self.lbl_status.setText(f"[BUFFER BUSY] 입력 지연 제한 중 ({cooldown_ms}ms)")
         self.lbl_status.setStyleSheet("color: #d29922; font-size: 12px; font-weight: bold; padding-left: 2px;")
         self.feedback_timer.start(400)
 
     def show_feedback(self, msg: str, is_error: bool = False):
+        if self.is_dialogue_mode:
+            return
         color = "#f85149" if is_error else "#3fb950"
         self.lbl_status.setText(msg)
         self.lbl_status.setStyleSheet(f"color: {color}; font-size: 12px; font-weight: bold; padding-left: 2px;")
         self.feedback_timer.start(1100)
 
     def _reset_prompt_border(self):
+        if self.is_dialogue_mode:
+            return
         if self.current_target and not self.current_target.startswith(self.typed_text):
             self._apply_prompt_border("#f85149")
         else:
