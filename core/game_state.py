@@ -227,38 +227,91 @@ class GameState(QObject):
 
     def get_ai_version(self) -> str:
         purchased_ids = {u["id"] for u in self.upgrades if u.get("purchased")}
+
+        # Chap 8: 특이점
         if "ch8_singularity" in purchased_ids:
             return "v8.0"
+
+        # Chap 7: v5.1 ~ v5.2 -> v6.0 -> v6.1 ~ v6.2 -> v7.0
         if "ch7_end" in purchased_ids:
             return "v7.0"
+        if "ch7_neu_global" in purchased_ids:
+            return "v6.2"
+        if "ch7_sw_meta" in purchased_ids or "ch7_hw_quantum" in purchased_ids:
+            return "v6.1"
         if "ch7_mid" in purchased_ids:
             return "v6.0"
+        if "ch7_sw_selfcode" in purchased_ids or "ch7_hw_datacenter" in purchased_ids:
+            return "v5.2"
         if "ch7_start" in purchased_ids:
-            return "v5.5"
+            return "v5.1"
+
+        # Chap 6: v3.1 ~ v3.2 -> v4.0 -> v4.1 ~ v4.2 -> v5.0
         if "ch6_end" in purchased_ids:
             return "v5.0"
+        if "ch6_neu_research" in purchased_ids:
+            return "v4.2"
+        if "ch6_sw_triton" in purchased_ids or "ch6_hw_epyc" in purchased_ids:
+            return "v4.1"
         if "ch6_mid" in purchased_ids:
             return "v4.0"
+        if "ch6_sw_rag" in purchased_ids or "ch6_hw_h100" in purchased_ids:
+            return "v3.2"
         if "ch6_start" in purchased_ids:
-            return "v3.5"
+            return "v3.1"
+
+        # Chap 5: v2.1 ~ v2.4 -> v3.0
         if "ch5_end" in purchased_ids:
             return "v3.0"
+        if "ch5_sw_spec" in purchased_ids or "ch5_hw_nvme_raid" in purchased_ids or "ch5_neu_billing" in purchased_ids:
+            return "v2.4"
+        if "ch5_neu_api" in purchased_ids:
+            return "v2.3"
+        if "ch5_sw_moe" in purchased_ids or "ch5_hw_a100" in purchased_ids:
+            return "v2.2"
         if "ch5_start" in purchased_ids:
-            return "v2.5"
+            return "v2.1"
+
+        # Chap 4: v1.1 ~ v1.4 -> v2.0
         if "ch4_end" in purchased_ids:
             return "v2.0"
+        if "ch4_sw_rlhf" in purchased_ids or "ch4_hw_ryzen9" in purchased_ids or "ch4_neu_community" in purchased_ids:
+            return "v1.4"
+        if "ch4_neu_bench" in purchased_ids:
+            return "v1.3"
+        if "ch4_sw_flash" in purchased_ids or "ch4_hw_rtx4090" in purchased_ids:
+            return "v1.2"
         if "ch4_start" in purchased_ids:
-            return "v1.5"
+            return "v1.1"
+
+        # Chap 3: v0.9-beta -> v1.0
         if "ch3_end" in purchased_ids:
             return "v1.0"
         if "ch3_start" in purchased_ids:
             return "v0.9-beta"
+
+        # Chap 2: v0.8 -> v0.9
         if "ch2_end" in purchased_ids:
-            return "v0.8"
+            return "v0.9"
         if "ch2_start" in purchased_ids:
-            return "v0.5"
+            return "v0.8"
+
+        # Chap 1: v0.4 -> v0.7
         if "ch1_end" in purchased_ids:
+            return "v0.7"
+        if "ch1_hw_cpu1" in purchased_ids or "ch1_hw_gpu0" in purchased_ids or "ch1_hw_psu" in purchased_ids:
+            return "v0.6"
+        if "ch1_hw_ram1" in purchased_ids or "ch1_hw_ssd1" in purchased_ids or "ch1_hw_cooler" in purchased_ids:
+            return "v0.5"
+        if "ch1_start" in purchased_ids:
+            return "v0.4"
+
+        # Tutorial (Chap 0): v0.1 -> v0.3
+        if "tut_act_key" in purchased_ids or "tut_pas_pc" in purchased_ids:
             return "v0.3"
+        if "tut_buffer" in purchased_ids:
+            return "v0.2"
+
         return "v0.1"
 
     def set_ai_name(self, name: str):
