@@ -5,7 +5,9 @@
 
 Memo(2026/11/24 11:00):  
 별건 아니고, 현재 트리 전체 이미지를 업로드해두었습니다.  
-upgrade_tree_preview.png 참고해주시면 됩니다.
+upgrade_tree_preview.png 참고해주시면 됩니다.  
+추가로 tree_viewer.py로도 확인하실 수 있습니다.  
+data/upgrades.json이 존재하여야 작동합니다.  
 
 ---
 
