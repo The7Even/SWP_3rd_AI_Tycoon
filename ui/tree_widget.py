@@ -58,6 +58,7 @@ class TreeCanvas(QWidget):
 
             btn = QPushButton(self)
             btn.setFixedSize(92, 62)
+            btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
             uid = upg["id"]
             btn.clicked.connect(lambda checked, x=uid: self._on_node_clicked(x))
@@ -69,7 +70,7 @@ class TreeCanvas(QWidget):
 
     def _on_node_clicked(self, upgrade_id: str):
         if self.game_state.purchase_upgrade(upgrade_id):
-            self.update_node_states(scroll_to_next=True)
+            self.update_node_states()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -96,12 +97,10 @@ class TreeCanvas(QWidget):
 
         self.update()
 
-    def update_node_states(self, scroll_to_next: bool = False):
+    def update_node_states(self):
         if len(self.node_buttons) != len(self.game_state.upgrades):
             self._build_nodes()
             self._reposition_nodes()
-
-        first_unlocked_y = None
 
         for upg in self.game_state.upgrades:
             uid = upg["id"]
@@ -144,8 +143,6 @@ class TreeCanvas(QWidget):
                 )
             elif unlocked:
                 btn.setEnabled(True)
-                if first_unlocked_y is None:
-                    first_unlocked_y = btn.y()
 
                 cost_str = format_number(upg["cost"])
                 if is_story:
@@ -188,13 +185,6 @@ class TreeCanvas(QWidget):
                 btn.setToolTip("이전 단계 업그레이드를 완료하면 해금됩니다.")
 
         self.update()
-
-        if scroll_to_next and first_unlocked_y is not None:
-            parent_scroll = self.parentWidget()
-            while parent_scroll and not isinstance(parent_scroll, QScrollArea):
-                parent_scroll = parent_scroll.parentWidget()
-            if isinstance(parent_scroll, QScrollArea):
-                parent_scroll.ensureVisible(150, first_unlocked_y + 40, 20, 140)
 
     def paintEvent(self, event):
         super().paintEvent(event)
@@ -274,6 +264,7 @@ class UpgradeTreeWidget(QFrame):
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
+        scroll.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         scroll.setStyleSheet("border: none; background-color: #f6f8fa;")
 
@@ -282,4 +273,4 @@ class UpgradeTreeWidget(QFrame):
         layout.addWidget(scroll)
 
     def refresh_tree(self):
-        self.canvas.update_node_states(scroll_to_next=False)
+        self.canvas.update_node_states()

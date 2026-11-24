@@ -68,11 +68,13 @@ class ClickableLogView(QTextEdit):
 
 
 class VirtualConsoleWidget(QFrame):
-    """경량화된 가상 콘솔 위젯 (평상시 명령어 입력 담당, 특이점 이후는 SingularityDialogueController에 위임)"""
+    """가상 콘솔 위젯 (명령어 입력 + 개발자-AI 스피너 & 타자기 대화 담당, 특이점 이후는 SingularityDialogueController에 위임)"""
 
     ending_completed = pyqtSignal(str)
     request_load_branch = pyqtSignal(int)
     request_reset_game = pyqtSignal()
+
+    SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
 
     DEFAULT_COMMANDS = {
         "1": [
@@ -104,11 +106,20 @@ class VirtualConsoleWidget(QFrame):
         ("> 시스템 초기화 완료... 로컬 LLM 환경 준비됨.", "#3fb950", 240),
     ]
 
-    def __init__(self, game_state, commands_path: str = os.path.join("data", "commands.json")):
+    def __init__(
+        self,
+        game_state,
+        commands_path: str = os.path.join("data", "commands.json"),
+        dialogues_path: str = os.path.join("data", "ai_dialogues.json"),
+    ):
         super().__init__()
         self.game_state = game_state
         self.commands_path = commands_path
+        self.dialogues_path = dialogues_path
+
         self.command_pools = self._load_commands_from_json()
+        self.dialogue_data = self._load_dialogues_from_json()
+        self.chapter_dialogue_decks: dict[str, list[dict]] = {}
 
         self.is_booting = True
         self._boot_step = 0
@@ -117,6 +128,16 @@ class VirtualConsoleWidget(QFrame):
         self.current_cmd_entry: dict = {"cmd": "", "output": ""}
         self.typed_text = ""
         self._log_lines_html: list[str] = []
+
+        # 개발자 입력 -> AI 사고 스피너 -> AI 타자기 출력 상태 관리
+        self._dialogue_phase: str | None = None
+        self._active_dev_full_text: str = ""
+        self._active_ai_full_text: str = ""
+        self._typing_char_idx: int = 0
+        self._spinner_idx: int = 0
+        self._spinner_ticks_left: int = 0
+        self._active_typing_html: str | None = None
+        self._pending_dev_line_idx: int | None = None
 
         self.setStyleSheet("VirtualConsoleWidget { background-color: #0d1117; border: none; }")
         self._init_ui()
@@ -134,6 +155,19 @@ class VirtualConsoleWidget(QFrame):
         self.boot_timer = QTimer(self)
         self.boot_timer.setSingleShot(True)
         self.boot_timer.timeout.connect(self._step_boot_sequence)
+
+        # 가상 대화 전용 타이머들
+        self.auto_dialogue_timer = QTimer(self)
+        self.auto_dialogue_timer.setSingleShot(True)
+        self.auto_dialogue_timer.timeout.connect(self._on_auto_dialogue_timeout)
+
+        self.priority_dialogue_timer = QTimer(self)
+        self.priority_dialogue_timer.timeout.connect(self._check_priority_dialogue_queue)
+        self.priority_dialogue_timer.start(1200)
+
+        self.dialogue_anim_timer = QTimer(self)
+        self.dialogue_anim_timer.setSingleShot(True)
+        self.dialogue_anim_timer.timeout.connect(self._step_dialogue_animation)
 
         # 블록 커서 깜빡임 타이머
         self._cursor_visible = True
@@ -192,6 +226,18 @@ class VirtualConsoleWidget(QFrame):
             return loaded
         except Exception:
             return {k: [dict(x) for x in v] for k, v in self.DEFAULT_COMMANDS.items()}
+
+    def _load_dialogues_from_json(self) -> dict:
+        if not os.path.exists(self.dialogues_path):
+            return {"version_intros": {}, "node_triggers": {}, "chapters": {}}
+        try:
+            with open(self.dialogues_path, "r", encoding="utf-8") as f:
+                raw = json.load(f)
+            if isinstance(raw, dict):
+                return raw
+        except Exception:
+            pass
+        return {"version_intros": {}, "node_triggers": {}, "chapters": {}}
 
     def _init_ui(self):
         layout = QVBoxLayout(self)
@@ -261,14 +307,41 @@ class VirtualConsoleWidget(QFrame):
 
     def clear_logs(self):
         self._log_lines_html.clear()
+        self._reset_dialogue_state()
         self.log_view.clear()
 
+    def _reset_dialogue_state(self):
+        self.dialogue_anim_timer.stop()
+        self._dialogue_phase = None
+        self._active_dev_full_text = ""
+        self._active_ai_full_text = ""
+        self._typing_char_idx = 0
+        self._spinner_idx = 0
+        self._spinner_ticks_left = 0
+        self._active_typing_html = None
+        self._pending_dev_line_idx = None
+
     def append_log(self, text: str, color: str = "#c9d1d9", bold: bool = False):
+        """
+        일반 로그 출력.
+        - 개발자 입력 줄이 이미 확정된 상태에서 AI가 스피너로 생각 중이거나 답변을 타이핑 중이라면:
+          개발자 입력 줄 바로 '위쪽'에 끼워 넣어 질문-답변 세트가 찢어지지 않게 유지한다.
+        - 개발자 입력이 아직 타이핑 중(_active_typing_html)이라면:
+          확정 로그 리스트 뒤에 추가되므로, 현재 타이핑 중인 줄이 자동으로 그 아래에 렌더링된다.
+        """
         line_html = self.format_line_html(text, color, bold)
-        self._log_lines_html.append(line_html)
-        if len(self._log_lines_html) > 120:
+        if self._pending_dev_line_idx is not None:
+            self._log_lines_html.insert(self._pending_dev_line_idx, line_html)
+            self._pending_dev_line_idx += 1
+        else:
+            self._log_lines_html.append(line_html)
+
+        if len(self._log_lines_html) > 160:
             self._log_lines_html.pop(0)
-        self.render_log_view()
+            if self._pending_dev_line_idx is not None:
+                self._pending_dev_line_idx = max(0, self._pending_dev_line_idx - 1)
+
+        self.render_log_view(active_line_html=self._active_typing_html)
 
     def format_line_html(self, text: str, color: str, bold: bool = False, cursor_suffix: str = "") -> str:
         if not text and not cursor_suffix:
@@ -296,6 +369,7 @@ class VirtualConsoleWidget(QFrame):
     def start_boot_sequence(self):
         self.boot_timer.stop()
         self.feedback_timer.stop()
+        self.auto_dialogue_timer.stop()
         self.singularity_ctrl.stop_all()
 
         self.dialogue_panel.hide()
@@ -313,6 +387,8 @@ class VirtualConsoleWidget(QFrame):
     def start_singularity_dialogue(self):
         self.boot_timer.stop()
         self.feedback_timer.stop()
+        self.auto_dialogue_timer.stop()
+        self._reset_dialogue_state()
         self.is_booting = False
         self.singularity_ctrl.start()
 
@@ -328,7 +404,195 @@ class VirtualConsoleWidget(QFrame):
             self._reset_prompt_border()
             self._pick_next_command()
             self.prompt_box.setFocus()
+            self._schedule_next_auto_dialogue()
 
+    # ==================== 가상 대화 스피너 & 타자기 출력 엔진 ====================
+    def _schedule_next_auto_dialogue(self):
+        delay_ms = int(random.uniform(35.0, 50.0) * 1000)
+        self.auto_dialogue_timer.start(delay_ms)
+
+    def _format_dialogue_text(self, raw: str) -> str:
+        ai_name = getattr(self.game_state, "ai_name", "Proto-AI") or "Proto-AI"
+        ai_ver = self.game_state.get_ai_version()
+        return raw.replace("{ai_name}", ai_name).replace("{ai_version}", ai_ver)
+
+    def _get_ai_dialogue_color(self) -> str:
+        chap = self.game_state.get_current_chapter()
+        if chap <= 2:
+            return "#a5d6ff"  # 초기 프로토타입: 스카이블루
+        elif chap <= 4:
+            return "#58a6ff"  # 성장기: 선명한 블루
+        elif chap <= 6:
+            return "#d2a8ff"  # 고도화기: 라벤더 퍼플
+        return "#ff7b72"      # 특이점 임계: 코랄 레드
+
+    def _get_ai_thinking_label(self) -> str:
+        chap = self.game_state.get_current_chapter()
+        if chap == 1:
+            return "Generating tokens..."
+        elif chap <= 3:
+            return "추론 연산 중..."
+        elif chap <= 5:
+            return "컨텍스트 분석 중..."
+        return "고차원 연산 중..."
+
+    def _get_ai_typing_interval_ms(self) -> int:
+        """AI가 진화할수록 출력 타이핑 속도가 빨라지는 연출"""
+        chap = self.game_state.get_current_chapter()
+        if chap <= 2:
+            return 28
+        elif chap <= 4:
+            return 22
+        elif chap <= 6:
+            return 17
+        return 14
+
+    def _is_tutorial_active(self) -> bool:
+        """Chap 1 시작 노드(ch1_start)를 구매하기 전(튜토리얼 구간)인지 확인"""
+        upgrades = getattr(self.game_state, "upgrades", [])
+        ch1_node = next((u for u in upgrades if u.get("id") == "ch1_start"), None)
+        if ch1_node is not None:
+            return not bool(ch1_node.get("purchased", False))
+        return False
+
+    def _is_auto_dialogue_blocked(self) -> bool:
+        if self.is_booting or self.is_dialogue_mode:
+            return True
+        if self._is_tutorial_active():
+            return True
+        if getattr(self.game_state, "is_ending_locked", False):
+            return True
+        if self._dialogue_phase is not None:
+            return True
+        # Chap 3 진입 직후 AI 공식 이름 입력 팝업이 닫힐 때까지 대기
+        if self.game_state.get_ai_version() == "v0.9-beta" and not getattr(self.game_state, "ai_named", True):
+            return True
+        return False
+
+    def _check_priority_dialogue_queue(self):
+        """version_intros / node_triggers 대기열이 있으면 일반 타이머를 무시하고 즉시 대화 출력 시작"""
+        if self._is_auto_dialogue_blocked():
+            return
+        queue = getattr(self.game_state, "pending_dialogue_queue", None)
+        if not queue:
+            return
+
+        kind, key = queue.pop(0)
+        # 튜토리얼 구간 버전(v0.1~v0.3) 인트로는 튜토리얼 종료 후 불필요하므로 건너뜀
+        if kind == "version" and key in ("v0.1", "v0.2", "v0.3"):
+            self._check_priority_dialogue_queue()
+            return
+
+        entry = None
+        if kind == "version":
+            entry = self.dialogue_data.get("version_intros", {}).get(key)
+        elif kind == "node":
+            entry = self.dialogue_data.get("node_triggers", {}).get(key)
+
+        if entry:
+            self._start_dialogue_pair(entry["dev"], entry["ai"])
+            self._schedule_next_auto_dialogue()
+
+    def _on_auto_dialogue_timeout(self):
+        """35~50초 랜덤 타이머 만료 시 현재 챕터 셔플 덱에서 1세트 출력"""
+        if self._is_auto_dialogue_blocked() or getattr(self.game_state, "pending_dialogue_queue", None):
+            self._schedule_next_auto_dialogue()
+            return
+
+        chap_key = str(self.game_state.get_current_chapter())
+        if not self.chapter_dialogue_decks.get(chap_key):
+            pool = list(self.dialogue_data.get("chapters", {}).get(chap_key, []))
+            random.shuffle(pool)
+            self.chapter_dialogue_decks[chap_key] = pool
+
+        if self.chapter_dialogue_decks[chap_key]:
+            entry = self.chapter_dialogue_decks[chap_key].pop()
+            self._start_dialogue_pair(entry["dev"], entry["ai"])
+
+        self._schedule_next_auto_dialogue()
+
+    def _start_dialogue_pair(self, dev_raw: str, ai_raw: str):
+        """1단계: 개발자 입력 프롬프트(> ...) 타자기 타이핑 시작"""
+        self._active_dev_full_text = f"> {self._format_dialogue_text(dev_raw)}"
+        self._active_ai_full_text = self._format_dialogue_text(ai_raw)
+        self._dialogue_phase = "typing_dev"
+        self._typing_char_idx = 0
+        self._pending_dev_line_idx = None
+        self._step_dialogue_animation()
+
+    def _step_dialogue_animation(self):
+        """개발자 입력 타자기 -> AI 스피너(뺑글뺑글) -> AI 응답 타자기 순차 연출"""
+        if self._dialogue_phase == "typing_dev":
+            self._typing_char_idx += 1
+            partial = self._active_dev_full_text[:self._typing_char_idx]
+            cursor = '<span style="color:#e6edf3;">▌</span>' if self._typing_char_idx < len(self._active_dev_full_text) else ""
+            # 개발자 입력은 밝은 화이트/실버(#e6edf3)로 출력
+            self._active_typing_html = self.format_line_html(partial, color="#e6edf3", bold=True, cursor_suffix=cursor)
+            self.render_log_view(active_line_html=self._active_typing_html)
+
+            if self._typing_char_idx < len(self._active_dev_full_text):
+                self.dialogue_anim_timer.start(28)
+            else:
+                # 개발자 입력 줄 확정 등록 후 AI 사고 스피너 단계 진입
+                final_dev_html = self.format_line_html(self._active_dev_full_text, color="#e6edf3", bold=True)
+                self._log_lines_html.append(final_dev_html)
+                if len(self._log_lines_html) > 160:
+                    self._log_lines_html.pop(0)
+
+                self._pending_dev_line_idx = len(self._log_lines_html) - 1
+                self._dialogue_phase = "thinking_ai"
+                self._spinner_idx = 0
+                chap = self.game_state.get_current_chapter()
+                self._spinner_ticks_left = 14 if chap <= 3 else (11 if chap <= 5 else 9)
+                self._step_dialogue_animation()
+
+        elif self._dialogue_phase == "thinking_ai":
+            if self._spinner_ticks_left > 0:
+                frame = self.SPINNER_FRAMES[self._spinner_idx % len(self.SPINNER_FRAMES)]
+                self._spinner_idx += 1
+                self._spinner_ticks_left -= 1
+
+                ai_color = self._get_ai_dialogue_color()
+                think_label = self._get_ai_thinking_label()
+                self._active_typing_html = self.format_line_html(
+                    f"  {frame} {think_label}",
+                    color=ai_color,
+                    bold=False,
+                )
+                self.render_log_view(active_line_html=self._active_typing_html)
+                self.dialogue_anim_timer.start(80)
+            else:
+                # 스피너 종료 -> AI 답변 한 글자씩 타이핑 시작
+                self._dialogue_phase = "typing_ai"
+                self._typing_char_idx = 0
+                self._step_dialogue_animation()
+
+        elif self._dialogue_phase == "typing_ai":
+            self._typing_char_idx += 1
+            ai_color = self._get_ai_dialogue_color()
+            partial = f"  {self._active_ai_full_text[:self._typing_char_idx]}"
+            cursor = f'<span style="color:{ai_color};">▌</span>' if self._typing_char_idx < len(self._active_ai_full_text) else ""
+            self._active_typing_html = self.format_line_html(partial, color=ai_color, bold=False, cursor_suffix=cursor)
+            self.render_log_view(active_line_html=self._active_typing_html)
+
+            if self._typing_char_idx < len(self._active_ai_full_text):
+                self.dialogue_anim_timer.start(self._get_ai_typing_interval_ms())
+            else:
+                # AI 응답 완료 -> 개발자 입력 줄 바로 다음 인덱스에 확정 삽입
+                final_ai_html = self.format_line_html(f"  {self._active_ai_full_text}", color=ai_color, bold=False)
+                insert_pos = (
+                    self._pending_dev_line_idx + 1
+                    if self._pending_dev_line_idx is not None
+                    else len(self._log_lines_html)
+                )
+                self._log_lines_html.insert(insert_pos, final_ai_html)
+                if len(self._log_lines_html) > 160:
+                    self._log_lines_html.pop(0)
+
+                self._reset_dialogue_state()
+                self.render_log_view()
+
+    # ==================== 명령어 프롬프트 렌더링 & 입력 ====================
     @property
     def current_target(self) -> str:
         return self.current_cmd_entry.get("cmd", "")

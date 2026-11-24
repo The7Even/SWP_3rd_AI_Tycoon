@@ -24,6 +24,26 @@ class GameState(QObject):
     }
     VALID_ENDING_IDS = BASIC_ENDING_IDS | {"ending_s_beyond"}
 
+    # 실제 upgrades.json 노드 ID -> ai_dialogues.json의 node_triggers 키 매핑 (메이저 버전 노드와 중복 제거 완료)
+    NODE_DIALOGUE_TRIGGER_MAP = {
+        "ch4_start": "ch3_low_rating",
+        "ch4_sw_flash": "ch4_attention_revamp",
+        "ch4_neu_bench": "ch4_coding_top10",
+        "ch5_neu_billing": "ch5_pro_profit",
+        "ch5_neu_api": "ch5_b2b_contract",
+        "ch5_sw_spec": "ch5_acquisition_reject",
+        "ch5_hw_a100": "ch5_cluster_upgrade",
+        "ch6_sw_rag": "ch6_benchmark_96",
+        "ch6_neu_research": "ch6_protein_folding",
+        "ch6_sw_triton": "ch6_battery_material",
+        "ch6_hw_epyc": "ch6_math_paper",
+        "ch7_hw_quantum": "ch7_quantum_integration",
+        "ch7_start": "ch7_national_grid",
+        "ch7_neu_global": "ch7_killswitch_fail",
+        "ch7_sw_meta": "ch7_anomaly_54812",
+        "ch7_sw_selfcode": "ch7_observer_barrier",
+    }
+
     # 6단계 AI 활동 정의 (해금 조건 노드 ID, 기본 이름, 잠김 안내 문구, 가중치)
     AI_ACTIVITY_DEFS = [
         {
@@ -245,6 +265,12 @@ class GameState(QObject):
         self.news_deck_queue: list[int] = []
         self.active_news_buff: dict | None = None
 
+        # 가상 대화 시스템 상태 (1회성 인트로 & 노드 트리거 추적)
+        self.played_version_intros: set[str] = set()
+        self.played_node_triggers: set[str] = set()
+        self.pending_dialogue_queue: list[tuple[str, str]] = []
+        self._last_checked_version: str = ""
+
         self.specs = {
             "CPU": "구형 듀얼코어 (미조립)",
             "GPU": "내장 그래픽",
@@ -271,11 +297,28 @@ class GameState(QObject):
 
         self._rebuild_news_deck(chapter=1, reset_used=True)
         self._recalculate_ai_activities()
+        self.check_dialogue_milestones()
 
         if emit_signal:
             self.state_changed.emit()
             self.command_tier_changed.emit(self.command_tier)
             self.unread_news_changed.emit(self.unread_news_count)
+
+    # ---------------- 가상 대화 마일스톤 감지 ----------------
+    def check_dialogue_milestones(self, purchased_node_id: str | None = None):
+        """메이저 버전 진입 또는 특정 사건 노드 구매 시 1회성 대사를 우선순위 큐에 등록"""
+        current_ver = self.get_ai_version()
+        if current_ver != self._last_checked_version:
+            self._last_checked_version = current_ver
+            if current_ver not in self.played_version_intros:
+                self.played_version_intros.add(current_ver)
+                self.pending_dialogue_queue.append(("version", current_ver))
+
+        if purchased_node_id and purchased_node_id in self.NODE_DIALOGUE_TRIGGER_MAP:
+            trig_key = self.NODE_DIALOGUE_TRIGGER_MAP[purchased_node_id]
+            if trig_key not in self.played_node_triggers:
+                self.played_node_triggers.add(trig_key)
+                self.pending_dialogue_queue.append(("node", trig_key))
 
     # ---------------- 6단계 AI 활동 실시간 갱신 ----------------
     def _recalculate_ai_activities(self):
@@ -483,7 +526,7 @@ class GameState(QObject):
     # ---------------- 세이브 / 로드 ----------------
     def to_dict(self) -> dict:
         return {
-            "version": 6,
+            "version": 7,
             "tokens": self.tokens,
             "tokens_per_command": self.tokens_per_command,
             "tokens_per_sec": self.tokens_per_sec,
@@ -495,6 +538,9 @@ class GameState(QObject):
             "ai_named": self.ai_named,
             "news_deck_chapter": self.news_deck_chapter,
             "used_news_indices": list(self.used_news_indices),
+            "played_version_intros": sorted(self.played_version_intros),
+            "played_node_triggers": sorted(self.played_node_triggers),
+            "last_checked_version": self._last_checked_version,
             "specs": copy.deepcopy(self.specs),
             "purchased_upgrades": [u["id"] for u in self.upgrades if u["purchased"]],
             "unlocked_encyclopedia": [d["id"] for d in self.encyclopedia if d["unlocked"]],
@@ -534,6 +580,12 @@ class GameState(QObject):
 
         if isinstance(data.get("news_history"), list):
             self.news_history = copy.deepcopy(data["news_history"])
+
+        # 가상 대화 1회성 이력 복원
+        self.played_version_intros = set(data.get("played_version_intros", []))
+        self.played_node_triggers = set(data.get("played_node_triggers", []))
+        self._last_checked_version = str(data.get("last_checked_version", self.get_ai_version()))
+        self.pending_dialogue_queue.clear()
 
         # 6단계 AI 활동 상태 재계산
         self._recalculate_ai_activities()
@@ -803,6 +855,9 @@ class GameState(QObject):
         new_chap = self.get_current_chapter()
         if new_chap != prev_chap:
             self._rebuild_news_deck(chapter=new_chap, reset_used=True)
+
+        # 버전 진입(version_intros) 및 특정 사건 노드(node_triggers) 1회성 대화 큐 등록
+        self.check_dialogue_milestones(purchased_node_id=upgrade_id)
 
         self.state_changed.emit()
 
