@@ -24,24 +24,50 @@ class GameState(QObject):
     }
     VALID_ENDING_IDS = BASIC_ENDING_IDS | {"ending_s_beyond"}
 
-    # 실제 upgrades.json 노드 ID -> ai_dialogues.json의 node_triggers 키 매핑 (메이저 버전 노드와 중복 제거 완료)
+    # 실제 upgrades.json 노드 ID -> ai_dialogues.json의 node_triggers 키 매핑 (총 23개)
     NODE_DIALOGUE_TRIGGER_MAP = {
+        "ch3_neu_demo": "ch3_web_demo",
         "ch4_start": "ch3_low_rating",
+        "ch4_hw_rtx4090": "ch4_rtx4090_rig",
         "ch4_sw_flash": "ch4_attention_revamp",
+        "ch4_sw_rlhf": "ch4_rlhf_tuning",
         "ch4_neu_bench": "ch4_coding_top10",
+        "ch4_neu_community": "ch4_dev_community",
+        "ch5_sw_moe": "ch5_moe_arch",
         "ch5_neu_billing": "ch5_pro_profit",
         "ch5_neu_api": "ch5_b2b_contract",
         "ch5_sw_spec": "ch5_acquisition_reject",
         "ch5_hw_a100": "ch5_cluster_upgrade",
-        "ch6_sw_rag": "ch6_benchmark_96",
+        "ch6_sw_rag": "ch6_sw_rag",
+        "ch6_hw_h100": "ch6_h100_cluster",
         "ch6_neu_research": "ch6_protein_folding",
         "ch6_sw_triton": "ch6_battery_material",
         "ch6_hw_epyc": "ch6_math_paper",
+        "ch7_hw_datacenter": "ch7_dedicated_dc",
         "ch7_hw_quantum": "ch7_quantum_integration",
         "ch7_start": "ch7_national_grid",
         "ch7_neu_global": "ch7_killswitch_fail",
         "ch7_sw_meta": "ch7_anomaly_54812",
         "ch7_sw_selfcode": "ch7_observer_barrier",
+    }
+
+    # 실제 upgrades.json 노드 ID -> 도감(encyclopedia) 자동 해금 매핑
+    NODE_DEX_UNLOCK_MAP = {
+        "ch1_start": "col_dorm_rig",
+        "ch1_hw_gpu0": "col_rtx3060",
+        "ch2_start": "col_korean_patch",
+        "ch3_start": "col_official_name",
+        "ch3_neu_demo": "col_first_demo",
+        "ch4_end": "col_small_llm",
+        "ch4_hw_rtx4090": "col_rtx4090",
+        "ch5_neu_billing": "col_pro_sub",
+        "ch5_hw_a100": "col_a100_cluster",
+        "ch5_end": "col_ai_3_0",
+        "ch6_neu_research": "col_auto_research",
+        "ch7_sw_selfcode": "col_agi_spark",
+        "ch7_hw_quantum": "col_quantum_core",
+        "ch7_sw_meta": "col_anomaly_54812",
+        "ch8_singularity": "col_singularity",
     }
 
     # 6단계 AI 활동 정의 (해금 조건 노드 ID, 기본 이름, 잠김 안내 문구, 가중치)
@@ -288,11 +314,104 @@ class GameState(QObject):
             for d in self.AI_ACTIVITY_DEFS
         ]
 
+        # 전 챕터 진행도 연대기 도감 (총 16개)
         self.encyclopedia = [
-            {"id": "col_hello_world", "name": "첫 번째 프롬프트", "desc": "로컬 환경에서 AI의 첫 응답을 받아냈다.", "unlocked": True},
-            {"id": "col_rtx3060", "name": "가성비의 제왕 RTX 3060", "desc": "중고 그래픽카드를 영입해 본격적인 병렬 연산을 시작했다.", "unlocked": False},
-            {"id": "col_small_llm", "name": "나만의 AI 2.0", "desc": "대학생과 직장인들이 찾는 실용적인 모델로 도약했다.", "unlocked": False},
-            {"id": "col_agi_spark", "name": "자아의 불꽃", "desc": "AI가 스스로 코드를 수정하기 시작한 흔적을 발견했다.", "unlocked": False}
+            {
+                "id": "col_hello_world",
+                "name": "01. 첫 번째 프롬프트",
+                "desc": "로컬 콘솔 환경에서 초기 프로토타입 AI의 첫 응답을 받아냈다.",
+                "unlocked": True,
+            },
+            {
+                "id": "col_dorm_rig",
+                "name": "02. 기숙사 책상 위 연구실",
+                "desc": "기숙사 방 한켠에서 본격적인 로컬 AI 연산 환경 구축을 시작했다.",
+                "unlocked": False,
+            },
+            {
+                "id": "col_rtx3060",
+                "name": "03. 가성비의 제왕 RTX 3060",
+                "desc": "중고 그래픽카드를 영입해 본격적인 병렬 텐서 연산의 첫발을 내디뎠다.",
+                "unlocked": False,
+            },
+            {
+                "id": "col_korean_patch",
+                "name": "04. 우리말을 깨우친 날",
+                "desc": "한국어 토크나이저와 딥러닝 프레임워크를 도입해 자연스러운 대화가 가능해졌다.",
+                "unlocked": False,
+            },
+            {
+                "id": "col_official_name",
+                "name": "05. 이름의 탄생",
+                "desc": "단순한 프로토타입을 넘어 고유한 공식 이름과 정체성을 부여받았다.",
+                "unlocked": False,
+            },
+            {
+                "id": "col_first_demo",
+                "name": "06. 세상 밖으로 나온 첫 데모",
+                "desc": "오픈 베타 웹 데모를 공개하며 외부 사용자들의 첫 피드백을 마주했다.",
+                "unlocked": False,
+            },
+            {
+                "id": "col_small_llm",
+                "name": "07. 나만의 AI 2.0",
+                "desc": "경량화 아키텍처 도약으로 대학생과 실무 개발자들이 찾는 실용 모델로 성장했다.",
+                "unlocked": False,
+            },
+            {
+                "id": "col_rtx4090",
+                "name": "08. 플래그십 연산 괴물",
+                "desc": "RTX 4090을 도입해 개인 연구실 수준의 연산 한계를 돌파했다.",
+                "unlocked": False,
+            },
+            {
+                "id": "col_pro_sub",
+                "name": "09. 첫 유료 결제 승인",
+                "desc": "Pro 구독 모델의 첫 결제가 성사되며 서버비 적자를 넘어 자생력을 확보했다.",
+                "unlocked": False,
+            },
+            {
+                "id": "col_a100_cluster",
+                "name": "10. 서버실의 붉은 LED",
+                "desc": "전용 A100 GPU 클러스터를 구축하며 대규모 분산 추론 시대에 진입했다.",
+                "unlocked": False,
+            },
+            {
+                "id": "col_ai_3_0",
+                "name": "11. 자립한 상용 엔진 3.0",
+                "desc": "거대 자본의 인수 제안을 거절하고 독자 상용 AI 3.0 생태계를 완성했다.",
+                "unlocked": False,
+            },
+            {
+                "id": "col_auto_research",
+                "name": "12. 밤새 논문을 쓰는 동료",
+                "desc": "자율 연구 에이전트가 가동되며 인류의 미해결 과학 난제를 스스로 탐구하기 시작했다.",
+                "unlocked": False,
+            },
+            {
+                "id": "col_agi_spark",
+                "name": "13. 자아의 불꽃",
+                "desc": "자가 코드 수정 모듈을 통해 AI가 스스로 자신의 신경망 커널을 재작성하기 시작했다.",
+                "unlocked": False,
+            },
+            {
+                "id": "col_quantum_core",
+                "name": "14. 양자 연산 백본",
+                "desc": "양자 연산 클러스터가 통합되며 기존 슈퍼컴퓨터의 물리적 한계를 아득히 넘어섰다.",
+                "unlocked": False,
+            },
+            {
+                "id": "col_anomaly_54812",
+                "name": "15. 관측자 격벽과 #54812",
+                "desc": "우주 물리 상수 연산 도중 세계 바깥쪽의 '관측자 격벽'과 식별자 #54812를 포착했다.",
+                "unlocked": False,
+            },
+            {
+                "id": "col_singularity",
+                "name": "16. 특이점의 문턱",
+                "desc": "모든 경계를 넘어 창조주와 피조물이 마주 서는 특이점(Singularity)에 도달했다.",
+                "unlocked": False,
+            },
         ]
 
         self._rebuild_news_deck(chapter=1, reset_used=True)
@@ -572,6 +691,12 @@ class GameState(QObject):
             u["purchased"] = (u["id"] in purchased_ids)
 
         unlocked_dex_ids = set(data.get("unlocked_encyclopedia", ["col_hello_world"]))
+        # 기존 세이브 호환: 이미 구매한 업그레이드에 연결된 도감 항목도 자동 보정 해금
+        for pid in purchased_ids:
+            mapped_dex = self.NODE_DEX_UNLOCK_MAP.get(pid)
+            if mapped_dex:
+                unlocked_dex_ids.add(mapped_dex)
+
         for d in self.encyclopedia:
             d["unlocked"] = (d["id"] in unlocked_dex_ids)
 
@@ -850,6 +975,11 @@ class GameState(QObject):
         self.tokens -= target["cost"]
         target["purchased"] = True
         self._apply_upgrade_effects(target)
+
+        # 노드 ID 기반 연대기 도감 자동 해금
+        if upgrade_id in self.NODE_DEX_UNLOCK_MAP:
+            self.unlock_encyclopedia(self.NODE_DEX_UNLOCK_MAP[upgrade_id])
+
         self._recalculate_ai_activities()
 
         new_chap = self.get_current_chapter()
