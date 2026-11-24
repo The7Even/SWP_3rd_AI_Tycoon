@@ -24,6 +24,52 @@ class GameState(QObject):
     }
     VALID_ENDING_IDS = BASIC_ENDING_IDS | {"ending_s_beyond"}
 
+    # 6단계 AI 활동 정의 (해금 조건 노드 ID, 기본 이름, 잠김 안내 문구, 가중치)
+    AI_ACTIVITY_DEFS = [
+        {
+            "key": "local_mining",
+            "name": "로컬 백그라운드 연산",
+            "unlock_hint": "잠김 (Chap 1 하드웨어 증설 후 해금)",
+            "unlock_mode": "any_passive",
+            "weight": 1.0,
+        },
+        {
+            "key": "beta_api",
+            "name": "오픈 베타 API 트래픽",
+            "unlock_hint": "잠김 (Chap 3 웹 데모 배포 후 해금)",
+            "unlock_node": "ch3_neu_demo",
+            "weight": 2.0,
+        },
+        {
+            "key": "campus_hosting",
+            "name": "실무·캠퍼스 경량 모델 호스팅",
+            "unlock_hint": "잠김 (Chap 4 AI 2.0 릴리즈 후 해금)",
+            "unlock_node": "ch4_end",
+            "weight": 4.0,
+        },
+        {
+            "key": "paid_pro",
+            "name": "유료 구독자(Pro) 응답 서비스",
+            "unlock_hint": "잠김 (Chap 5 AI 3.0 Pro 출시 후 해금)",
+            "unlock_node": "ch5_end",
+            "weight": 8.0,
+        },
+        {
+            "key": "auto_research",
+            "name": "자율 연구 에이전트 가동",
+            "unlock_hint": "잠김 (Chap 6 AI 5.0 개발 완료 후 해금)",
+            "unlock_node": "ch6_end",
+            "weight": 16.0,
+        },
+        {
+            "key": "global_quantum",
+            "name": "글로벌 기간망·양자 연산 동기화",
+            "unlock_hint": "잠김 (Chap 7 국가 기간망 연동 후 해금)",
+            "unlock_node": "ch7_start",
+            "weight": 32.0,
+        },
+    ]
+
     FALLBACK_ENDINGS_CATALOG = [
         {
             "id": "ending_a_domination",
@@ -90,20 +136,35 @@ class GameState(QObject):
         self,
         upgrades_path: str = os.path.join("data", "upgrades.json"),
         endings_path: str = os.path.join("data", "endings.json"),
-        news_path: str = os.path.join("data", "news.json")
+        news_path: str = os.path.join("data", "news.json"),
+        story_events_path: str = os.path.join("data", "story_events.json")
     ):
         super().__init__()
         self.upgrades_path = upgrades_path
         self.endings_path = endings_path
         self.news_path = news_path
+        self.story_events_path = story_events_path
 
         self.base_upgrades = self._load_upgrades_from_json()
         self.ENDINGS_CATALOG, self.ENDING_SCRIPTS = self._load_endings_from_json()
         self.news_by_chapter = self._load_news_from_json()
+        self.story_events_map = self._load_story_events_from_json()
 
         self.unlocked_endings: set[str] = set()
         self.is_ending_locked: bool = False
         self.reset_state(emit_signal=False)
+
+    def _load_story_events_from_json(self) -> dict[str, dict]:
+        if not os.path.exists(self.story_events_path):
+            return {}
+        try:
+            with open(self.story_events_path, "r", encoding="utf-8") as f:
+                raw = json.load(f)
+            if isinstance(raw, dict):
+                return raw
+        except Exception:
+            pass
+        return {}
 
     def _load_news_from_json(self) -> dict[int, list[dict]]:
         grouped: dict[int, list[dict]] = {c: [] for c in range(1, 8)}
@@ -193,11 +254,12 @@ class GameState(QObject):
         }
 
         self.news_history = []
+        self.upgrades = copy.deepcopy(self.base_upgrades)
 
+        # 6단계 AI 활동 초기화
         self.ai_activities = [
-            {"name": "로컬 백그라운드 토큰 마이닝", "rate": "잠김 (Chap 1 하드웨어 증설 후 해금)", "status": "대기"},
-            {"name": "유료 플레이어 구독 응답", "rate": "잠김 (Chap 5 AI 3.0 후 해금)", "status": "대기"},
-            {"name": "자체 프로젝트 자율 수행", "rate": "잠김 (Chap 6 AI 5.0 후 해금)", "status": "대기"}
+            {"name": d["name"], "rate": d["unlock_hint"], "status": "대기"}
+            for d in self.AI_ACTIVITY_DEFS
         ]
 
         self.encyclopedia = [
@@ -207,13 +269,46 @@ class GameState(QObject):
             {"id": "col_agi_spark", "name": "자아의 불꽃", "desc": "AI가 스스로 코드를 수정하기 시작한 흔적을 발견했다.", "unlocked": False}
         ]
 
-        self.upgrades = copy.deepcopy(self.base_upgrades)
         self._rebuild_news_deck(chapter=1, reset_used=True)
+        self._recalculate_ai_activities()
 
         if emit_signal:
             self.state_changed.emit()
             self.command_tier_changed.emit(self.command_tier)
             self.unread_news_changed.emit(self.unread_news_count)
+
+    # ---------------- 6단계 AI 활동 실시간 갱신 ----------------
+    def _recalculate_ai_activities(self):
+        purchased_ids = {u["id"] for u in self.upgrades if u.get("purchased")}
+        total_eff_sec = self.effective_tokens_per_sec
+
+        active_flags = []
+        total_weight = 0.0
+        for d in self.AI_ACTIVITY_DEFS:
+            if d.get("unlock_mode") == "any_passive":
+                is_active = self.tokens_per_sec > 0
+            else:
+                is_active = d.get("unlock_node") in purchased_ids
+            active_flags.append(is_active)
+            if is_active:
+                total_weight += float(d["weight"])
+
+        updated = []
+        for d, is_active in zip(self.AI_ACTIVITY_DEFS, active_flags):
+            if is_active and total_weight > 0:
+                share = total_eff_sec * (float(d["weight"]) / total_weight)
+                updated.append({
+                    "name": d["name"],
+                    "rate": f"{format_number(share)} Tk/s",
+                    "status": "가동 중"
+                })
+            else:
+                updated.append({
+                    "name": d["name"],
+                    "rate": d["unlock_hint"],
+                    "status": "대기"
+                })
+        self.ai_activities = updated
 
     # ---------------- 챕터 & AI 이름/버전 동적 계산 ----------------
     def get_current_chapter(self) -> int:
@@ -388,7 +483,7 @@ class GameState(QObject):
     # ---------------- 세이브 / 로드 ----------------
     def to_dict(self) -> dict:
         return {
-            "version": 5,
+            "version": 6,
             "tokens": self.tokens,
             "tokens_per_command": self.tokens_per_command,
             "tokens_per_sec": self.tokens_per_sec,
@@ -437,19 +532,11 @@ class GameState(QObject):
         loaded_endings = set(data.get("unlocked_endings", [])) & self.VALID_ENDING_IDS
         self.unlocked_endings = preserved | loaded_endings
 
-        if isinstance(data.get("ai_activities"), list):
-            self.ai_activities = copy.deepcopy(data["ai_activities"])
-
-        if self.ai_activities:
-            if self.tokens_per_sec > 0:
-                self.ai_activities[0]["status"] = "가동 중"
-                self.ai_activities[0]["rate"] = f"{format_number(self.effective_tokens_per_sec)} Tk/s"
-            else:
-                self.ai_activities[0]["status"] = "대기"
-                self.ai_activities[0]["rate"] = "잠김 (Chap 1 하드웨어 증설 후 해금)"
-
         if isinstance(data.get("news_history"), list):
             self.news_history = copy.deepcopy(data["news_history"])
+
+        # 6단계 AI 활동 상태 재계산
+        self._recalculate_ai_activities()
 
         # 뉴스 덱 중복 방지 인덱스 복원
         cur_chap = self.get_current_chapter()
@@ -649,6 +736,7 @@ class GameState(QObject):
             news_type=news_type,
             effect_text=effect_summary
         )
+        self._recalculate_ai_activities()
         self.state_changed.emit()
 
     # ---------------- 게임 진행 & 업그레이드 ----------------
@@ -676,11 +764,8 @@ class GameState(QObject):
             self.tokens += eff_sec * dt_sec
             changed = True
 
-        if self.ai_activities and self.tokens_per_sec > 0:
-            self.ai_activities[0]["status"] = "가동 중"
-            self.ai_activities[0]["rate"] = f"{format_number(eff_sec)} Tk/s"
-
         if changed:
+            self._recalculate_ai_activities()
             self.state_changed.emit()
 
     def complete_command(self):
@@ -713,6 +798,7 @@ class GameState(QObject):
         self.tokens -= target["cost"]
         target["purchased"] = True
         self._apply_upgrade_effects(target)
+        self._recalculate_ai_activities()
 
         new_chap = self.get_current_chapter()
         if new_chap != prev_chap:
@@ -720,12 +806,29 @@ class GameState(QObject):
 
         self.state_changed.emit()
 
-        if isinstance(target.get("story_event"), dict):
-            self.story_event_triggered.emit(target["story_event"])
-
-        # Chap 3 진입 시 AI 공식 작명 요청
+        # Chap 3 진입 시 AI 공식 작명을 먼저 받아서 스토리/뉴스에 바로 반영
         if upgrade_id == "ch3_start" and not self.ai_named:
             self.ai_naming_requested.emit()
+
+        # story_events.json 우선 로드 (없으면 upgrades.json 내장 story_event 폴백)
+        raw_story = self.story_events_map.get(upgrade_id) or target.get("story_event")
+        if isinstance(raw_story, dict):
+            formatted_story = copy.deepcopy(raw_story)
+            formatted_story["title"] = self._format_news_placeholders(str(formatted_story.get("title", "")))
+            formatted_story["content"] = self._format_news_placeholders(str(formatted_story.get("content", "")))
+            self.story_event_triggered.emit(formatted_story)
+
+            # type: 4 스토리 뉴스가 정의되어 있으면 뉴스 피드에 자동 추가
+            s_news = raw_story.get("story_news")
+            if isinstance(s_news, dict):
+                self.push_news(
+                    title=self._format_news_placeholders(str(s_news.get("title", ""))),
+                    content=self._format_news_placeholders(str(s_news.get("text", ""))),
+                    category="story",
+                    is_milestone=False,
+                    news_type=4,
+                    effect_text=""
+                )
 
         fx = target.get("effects", {})
         if isinstance(fx, dict) and fx.get("trigger_singularity"):
@@ -775,18 +878,6 @@ class GameState(QObject):
                 self.set_command_tier(target_tier)
 
         if "unlock_activity" in fx and isinstance(fx["unlock_activity"], dict):
-            act_info = fx["unlock_activity"]
-            idx = int(act_info.get("index", 1))
-            bonus_sec = float(act_info.get("bonus_sec", 0.0))
+            bonus_sec = float(fx["unlock_activity"].get("bonus_sec", 0.0))
             if bonus_sec > 0:
                 self.tokens_per_sec += bonus_sec
-            if 0 <= idx < len(self.ai_activities):
-                self.ai_activities[idx] = {
-                    "name": act_info.get("name", self.ai_activities[idx]["name"]),
-                    "rate": act_info.get("rate", "가동 중"),
-                    "status": act_info.get("status", "가동 중")
-                }
-
-        if self.ai_activities and self.tokens_per_sec > 0:
-            self.ai_activities[0]["status"] = "가동 중"
-            self.ai_activities[0]["rate"] = f"{format_number(self.effective_tokens_per_sec)} Tk/s"
