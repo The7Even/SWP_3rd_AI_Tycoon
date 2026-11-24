@@ -9,13 +9,14 @@ from PyQt6.QtCore import Qt, QPropertyAnimation, QPoint, QEasingCurve, QTimer
 
 
 class NewsCardWidget(QFrame):
-    """파스텔 톤 뉴스 카드 (제목 + 날짜 + 가로선 + 요약 본문)"""
+    """파스텔 톤 뉴스 카드 (제목 + 날짜 + 가로선 + 요약 본문 + 하단 효과 요약)"""
 
     def __init__(self, news_item: dict):
         super().__init__()
         category = news_item.get("category", "info")
         color_schemes = {
             "info": ("#fae17d", "#9a6700"),
+            "positive": ("#dafbe1", "#1a7f37"),
             "danger": ("#f28b96", "#a40e26"),
             "story": ("#d99be6", "#6639ba")
         }
@@ -72,6 +73,21 @@ class NewsCardWidget(QFrame):
             line-height: 1.4;
         """)
         layout.addWidget(lbl_content)
+
+        effect_text = news_item.get("effect_text", "").strip()
+        if effect_text:
+            eff_color = "#116329" if category == "positive" else ("#82071e" if category == "danger" else "#24292f")
+            lbl_effect = QLabel(effect_text)
+            lbl_effect.setStyleSheet(f"""
+                background-color: rgba(255, 255, 255, 0.45);
+                border-radius: 4px;
+                padding: 3px 8px;
+                font-size: 12px;
+                font-weight: bold;
+                color: {eff_color};
+                border: none;
+            """)
+            layout.addWidget(lbl_effect)
 
 
 class NewsDialog(QDialog):
@@ -531,6 +547,14 @@ class NewsDialog(QDialog):
         if reply == QMessageBox.StandardButton.Yes:
             self.save_manager.clear_all_saves()
             self.game_state.reset_state(emit_signal=True, preserve_endings=True)
+            parent_win = self.parent()
+            if parent_win:
+                if hasattr(parent_win, "console_widget"):
+                    parent_win.console_widget.start_boot_sequence()
+                if hasattr(parent_win, "news_timer") and not parent_win.news_timer.isActive():
+                    parent_win.news_timer.start(45000)
+                if hasattr(parent_win, "_sync_bottom_right_panel"):
+                    parent_win._sync_bottom_right_panel(force=True)
             self.refresh_all()
             QMessageBox.information(self, "초기화 완료", "모든 진행 데이터가 초기화되었습니다.")
 

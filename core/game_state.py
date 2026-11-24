@@ -4,6 +4,7 @@ import copy
 import random
 from datetime import datetime, timedelta
 from PyQt6.QtCore import QObject, pyqtSignal
+from core.number_format import format_number
 
 
 class GameState(QObject):
@@ -13,6 +14,7 @@ class GameState(QObject):
     command_tier_changed = pyqtSignal(int)
     story_event_triggered = pyqtSignal(dict)
     singularity_reached = pyqtSignal()
+    ai_naming_requested = pyqtSignal()
 
     BASIC_ENDING_IDS = {
         "ending_a_domination",
@@ -70,29 +72,6 @@ class GameState(QObject):
         }
     ]
 
-    RANDOM_NEWS_POOL = [
-        {
-            "title": "InstantGram, AI 개발 우려 표명.. AI 산업 주춤",
-            "content": "최근 InstantGram의 CEO가 제8차 AI 컨퍼런스에서 한 발언이 화제가 되고 있다. AI의 급격한 발전은 인류에게...",
-            "category": "danger"
-        },
-        {
-            "title": "글로벌 GPU 품귀 현상 심화, 그래픽카드 가격 20% 급등",
-            "content": "전 세계적인 AI 학습 열풍으로 인해 고성능 연산 장비의 재고가 바닥나며 하드웨어 시장이 요동치고 있다.",
-            "category": "danger"
-        },
-        {
-            "title": "오픈소스 커뮤니티, 초경량 양자화 기법 논문 공개",
-            "content": "기존 대비 절반 이하의 VRAM만으로도 동등한 추론 성능을 내는 새로운 알고리즘이 발표되어 개발자들의 환호를 받고 있다.",
-            "category": "info"
-        },
-        {
-            "title": "국내 대학생 개발자들 사이에서 '나만의 LLM 만들기' 열풍",
-            "content": "기숙사 방 한켠에서 시작한 개인 AI 프로젝트가 잇따라 벤치마크 기록을 경신하며 업계의 주목을 받고 있다.",
-            "category": "info"
-        }
-    ]
-
     FALLBACK_UPGRADES = [
         {
             "id": "tut_buffer",
@@ -110,17 +89,41 @@ class GameState(QObject):
     def __init__(
         self,
         upgrades_path: str = os.path.join("data", "upgrades.json"),
-        endings_path: str = os.path.join("data", "endings.json")
+        endings_path: str = os.path.join("data", "endings.json"),
+        news_path: str = os.path.join("data", "news.json")
     ):
         super().__init__()
         self.upgrades_path = upgrades_path
         self.endings_path = endings_path
+        self.news_path = news_path
+
         self.base_upgrades = self._load_upgrades_from_json()
         self.ENDINGS_CATALOG, self.ENDING_SCRIPTS = self._load_endings_from_json()
+        self.news_by_chapter = self._load_news_from_json()
 
         self.unlocked_endings: set[str] = set()
         self.is_ending_locked: bool = False
         self.reset_state(emit_signal=False)
+
+    def _load_news_from_json(self) -> dict[int, list[dict]]:
+        grouped: dict[int, list[dict]] = {c: [] for c in range(1, 8)}
+        if not os.path.exists(self.news_path):
+            return grouped
+
+        try:
+            with open(self.news_path, "r", encoding="utf-8") as f:
+                raw = json.load(f)
+            items = raw.get("news", raw) if isinstance(raw, dict) else raw
+            if isinstance(items, list):
+                for entry in items:
+                    if not isinstance(entry, dict):
+                        continue
+                    chap = int(entry.get("chap", 1))
+                    if chap in grouped:
+                        grouped[chap].append(copy.deepcopy(entry))
+        except Exception:
+            pass
+        return grouped
 
     def _load_endings_from_json(self) -> tuple[list[dict], dict]:
         if os.path.exists(self.endings_path):
@@ -172,6 +175,15 @@ class GameState(QObject):
         self.is_ending_locked: bool = False
         self.unlocked_endings = saved_endings
 
+        self.ai_name: str = "Proto-AI"
+        self.ai_named: bool = False
+
+        # 뉴스 덱 & 버프 상태 (중첩 없음, 30초 지속)
+        self.news_deck_chapter: int = 1
+        self.used_news_indices: list[int] = []
+        self.news_deck_queue: list[int] = []
+        self.active_news_buff: dict | None = None
+
         self.specs = {
             "CPU": "구형 듀얼코어 (미조립)",
             "GPU": "내장 그래픽",
@@ -196,12 +208,101 @@ class GameState(QObject):
         ]
 
         self.upgrades = copy.deepcopy(self.base_upgrades)
+        self._rebuild_news_deck(chapter=1, reset_used=True)
 
         if emit_signal:
             self.state_changed.emit()
             self.command_tier_changed.emit(self.command_tier)
             self.unread_news_changed.emit(self.unread_news_count)
 
+    # ---------------- 챕터 & AI 이름/버전 동적 계산 ----------------
+    def get_current_chapter(self) -> int:
+        purchased_ids = {u["id"] for u in self.upgrades if u.get("purchased")}
+        if "ch8_singularity" in purchased_ids:
+            return 8
+        for chap in range(7, 0, -1):
+            if f"ch{chap}_start" in purchased_ids:
+                return chap
+        return 1
+
+    def get_ai_version(self) -> str:
+        purchased_ids = {u["id"] for u in self.upgrades if u.get("purchased")}
+        if "ch8_singularity" in purchased_ids:
+            return "v8.0"
+        if "ch7_end" in purchased_ids:
+            return "v7.0"
+        if "ch7_mid" in purchased_ids:
+            return "v6.0"
+        if "ch7_start" in purchased_ids:
+            return "v5.5"
+        if "ch6_end" in purchased_ids:
+            return "v5.0"
+        if "ch6_mid" in purchased_ids:
+            return "v4.0"
+        if "ch6_start" in purchased_ids:
+            return "v3.5"
+        if "ch5_end" in purchased_ids:
+            return "v3.0"
+        if "ch5_start" in purchased_ids:
+            return "v2.5"
+        if "ch4_end" in purchased_ids:
+            return "v2.0"
+        if "ch4_start" in purchased_ids:
+            return "v1.5"
+        if "ch3_end" in purchased_ids:
+            return "v1.0"
+        if "ch3_start" in purchased_ids:
+            return "v0.9-beta"
+        if "ch2_end" in purchased_ids:
+            return "v0.8"
+        if "ch2_start" in purchased_ids:
+            return "v0.5"
+        if "ch1_end" in purchased_ids:
+            return "v0.3"
+        return "v0.1"
+
+    def set_ai_name(self, name: str):
+        cleaned = name.strip()
+        if cleaned:
+            self.ai_name = cleaned
+        self.ai_named = True
+        self.state_changed.emit()
+
+    def _format_news_placeholders(self, text: str) -> str:
+        return (
+            text.replace("{ai_name}", self.ai_name)
+            .replace("{ai_version}", self.get_ai_version())
+        )
+
+    # ---------------- 지속형 버프 반영 최종 연산량 계산 ----------------
+    def _calc_buffed_stat(self, base_value: float, target_name: str) -> float:
+        buff = self.active_news_buff
+        if not buff or buff.get("target") != target_name:
+            return base_value
+
+        mode = buff.get("mode", "flat")
+        val = float(buff.get("value", 0.0))
+
+        flat_add = val if mode == "flat" else 0.0
+        pct_add = val if mode == "percent" else 0.0
+
+        # 공식: (기본값 + 고정치) * (1 + 퍼센트 / 100)
+        result = (base_value + flat_add) * (1.0 + pct_add / 100.0)
+        return max(0.0, result)
+
+    @property
+    def effective_tokens_per_command(self) -> float:
+        base = max(1.0, self.tokens_per_command)
+        eff = self._calc_buffed_stat(base, "command_rate")
+        return max(1.0, eff) if base >= 1.0 else eff
+
+    @property
+    def effective_tokens_per_sec(self) -> float:
+        if self.tokens_per_sec <= 0:
+            return 0.0
+        return self._calc_buffed_stat(self.tokens_per_sec, "passive_rate")
+
+    # ---------------- 엔딩 / 설정 동기화 ----------------
     def sync_persistent_endings(self, ending_ids: list[str]):
         valid_ids = {str(x) for x in ending_ids} & self.VALID_ENDING_IDS
         self.unlocked_endings.update(valid_ids)
@@ -211,6 +312,7 @@ class GameState(QObject):
         if ending_id in self.VALID_ENDING_IDS:
             self.unlocked_endings.add(ending_id)
         self.is_ending_locked = True
+        self.active_news_buff = None
         self.state_changed.emit()
 
     def get_basic_ending_count(self) -> int:
@@ -230,9 +332,10 @@ class GameState(QObject):
             self.unread_news_count = 0
             self.unread_news_changed.emit(0)
 
+    # ---------------- 세이브 / 로드 ----------------
     def to_dict(self) -> dict:
         return {
-            "version": 4,
+            "version": 5,
             "tokens": self.tokens,
             "tokens_per_command": self.tokens_per_command,
             "tokens_per_sec": self.tokens_per_sec,
@@ -240,6 +343,10 @@ class GameState(QObject):
             "command_tier": self.command_tier,
             "virtual_day_offset": self.virtual_day_offset,
             "unread_news_count": self.unread_news_count,
+            "ai_name": self.ai_name,
+            "ai_named": self.ai_named,
+            "news_deck_chapter": self.news_deck_chapter,
+            "used_news_indices": list(self.used_news_indices),
             "specs": copy.deepcopy(self.specs),
             "purchased_upgrades": [u["id"] for u in self.upgrades if u["purchased"]],
             "unlocked_encyclopedia": [d["id"] for d in self.encyclopedia if d["unlocked"]],
@@ -259,6 +366,9 @@ class GameState(QObject):
         self.command_tier = max(1, min(4, int(data.get("command_tier", 1))))
         self.virtual_day_offset = int(data.get("virtual_day_offset", 0))
         self.unread_news_count = max(0, int(data.get("unread_news_count", 0)))
+
+        self.ai_name = str(data.get("ai_name", "Proto-AI"))
+        self.ai_named = bool(data.get("ai_named", False))
 
         if isinstance(data.get("specs"), dict):
             self.specs.update(data["specs"])
@@ -280,13 +390,24 @@ class GameState(QObject):
         if self.ai_activities:
             if self.tokens_per_sec > 0:
                 self.ai_activities[0]["status"] = "가동 중"
-                self.ai_activities[0]["rate"] = f"{int(self.tokens_per_sec):,} Tk/s"
+                self.ai_activities[0]["rate"] = f"{format_number(self.effective_tokens_per_sec)} Tk/s"
             else:
                 self.ai_activities[0]["status"] = "대기"
                 self.ai_activities[0]["rate"] = "잠김 (Chap 1 하드웨어 증설 후 해금)"
 
         if isinstance(data.get("news_history"), list):
             self.news_history = copy.deepcopy(data["news_history"])
+
+        # 뉴스 덱 중복 방지 인덱스 복원
+        cur_chap = self.get_current_chapter()
+        saved_chap = int(data.get("news_deck_chapter", cur_chap))
+        saved_used = data.get("used_news_indices", [])
+        if saved_chap == cur_chap and isinstance(saved_used, list):
+            self.news_deck_chapter = cur_chap
+            self.used_news_indices = [int(x) for x in saved_used]
+            self._rebuild_news_deck(chapter=cur_chap, reset_used=False)
+        else:
+            self._rebuild_news_deck(chapter=cur_chap, reset_used=True)
 
         singularity_node = next((u for u in self.upgrades if u["id"] == "ch8_singularity"), None)
         if singularity_node and singularity_node.get("purchased", False):
@@ -295,22 +416,131 @@ class GameState(QObject):
         self.state_changed.emit()
         self.command_tier_changed.emit(self.command_tier)
         self.unread_news_changed.emit(self.unread_news_count)
-        if self.news_history:
-            self.news_added.emit(self.news_history[0])
         if self.is_ending_locked:
             self.singularity_reached.emit()
+
+    # ---------------- 뉴스 덱 & 효과 적용 엔진 ----------------
+    def _rebuild_news_deck(self, chapter: int, reset_used: bool = True):
+        if chapter < 1 or chapter > 7:
+            self.news_deck_chapter = chapter
+            self.used_news_indices = []
+            self.news_deck_queue = []
+            return
+
+        pool = self.news_by_chapter.get(chapter, [])
+        total = len(pool)
+        self.news_deck_chapter = chapter
+
+        if reset_used:
+            self.used_news_indices = []
+
+        used_set = set(self.used_news_indices)
+        remaining = [i for i in range(total) if i not in used_set]
+        if not remaining and total > 0:
+            self.used_news_indices = []
+            remaining = list(range(total))
+
+        random.shuffle(remaining)
+        self.news_deck_queue = remaining
 
     def _get_current_game_date(self) -> str:
         base_date = datetime(2026, 11, 5) + timedelta(days=self.virtual_day_offset)
         self.virtual_day_offset += 1
         return base_date.strftime("%Y. %m. %d")
 
-    def push_news(self, title: str, content: str, category: str = "info", is_milestone: bool = False):
+    def _build_effect_summary(self, effect: dict | None, applied_instant_delta: float = 0.0) -> str:
+        if not isinstance(effect, dict):
+            return ""
+
+        target = effect.get("target", "")
+        mode = effect.get("mode", "flat")
+        val = float(effect.get("value", 0))
+        dur = int(effect.get("duration_sec", 30))
+        sign = "+" if val >= 0 else "-"
+        abs_val = abs(val)
+
+        if target == "passive_rate":
+            if mode == "percent":
+                return f"[효과] {dur}초간 초당 연산 {sign}{int(abs_val)}%"
+            return f"[효과] {dur}초간 초당 연산 {sign}{format_number(abs_val)} Tk/s"
+
+        if target == "command_rate":
+            if mode == "percent":
+                return f"[효과] {dur}초간 명령어 효율 {sign}{int(abs_val)}%"
+            return f"[효과] {dur}초간 명령어 효율 {sign}{format_number(abs_val)} Tk/Command"
+
+        if target == "instant_tokens":
+            if val >= 0:
+                delta_str = format_number(applied_instant_delta)
+                if mode == "percent":
+                    return f"[효과] 즉시 +{delta_str} Token (+{int(abs_val)}%) 획득"
+                return f"[효과] 즉시 +{delta_str} Token 획득"
+            else:
+                loss_str = format_number(abs(applied_instant_delta))
+                if mode == "percent":
+                    return f"[효과] 즉시 -{loss_str} Token (-{int(abs_val)}%) 차감"
+                return f"[효과] 즉시 -{loss_str} Token 차감"
+
+        return ""
+
+    def _apply_news_effect(self, news_type: int, effect: dict | None) -> str:
+        if not isinstance(effect, dict):
+            return ""
+
+        target = effect.get("target", "")
+        mode = effect.get("mode", "flat")
+        val = float(effect.get("value", 0))
+
+        # 1. 즉시형 토큰 증감
+        if target == "instant_tokens":
+            if mode == "percent":
+                raw_delta = self.tokens * (val / 100.0)
+            else:
+                raw_delta = val
+
+            if raw_delta >= 0:
+                self.tokens += raw_delta
+                applied_delta = raw_delta
+            else:
+                loss = abs(raw_delta)
+                prev_tokens = self.tokens
+                self.tokens = max(0.0, self.tokens - loss)
+                applied_delta = -(prev_tokens - self.tokens)
+
+            return self._build_effect_summary(effect, applied_instant_delta=applied_delta)
+
+        # 2. 지속형 버프/디버프 (30초 유지, 중첩 없이 최신 뉴스로 갱신)
+        if target in ("passive_rate", "command_rate"):
+            dur = float(effect.get("duration_sec", 30))
+            self.active_news_buff = {
+                "target": target,
+                "mode": mode,
+                "value": val,
+                "is_positive": (news_type == 2 or val > 0),
+                "remaining_sec": dur,
+                "duration_sec": dur,
+                "summary": self._build_effect_summary(effect)
+            }
+            return self.active_news_buff["summary"]
+
+        return ""
+
+    def push_news(
+        self,
+        title: str,
+        content: str,
+        category: str = "info",
+        is_milestone: bool = False,
+        news_type: int = 1,
+        effect_text: str = ""
+    ):
         news_item = {
             "title": title,
             "date": self._get_current_game_date(),
             "content": content,
             "category": category,
+            "news_type": news_type,
+            "effect_text": effect_text,
             "is_milestone": is_milestone
         }
         self.news_history.insert(0, news_item)
@@ -326,9 +556,49 @@ class GameState(QObject):
     def trigger_random_news(self):
         if self.is_ending_locked:
             return
-        sample = random.choice(self.RANDOM_NEWS_POOL)
-        self.push_news(sample["title"], sample["content"], sample["category"], is_milestone=False)
 
+        chap = self.get_current_chapter()
+        if chap < 1 or chap > 7:
+            return
+
+        pool = self.news_by_chapter.get(chap, [])
+        if not pool:
+            return
+
+        if self.news_deck_chapter != chap:
+            self._rebuild_news_deck(chapter=chap, reset_used=True)
+        elif not self.news_deck_queue:
+            self._rebuild_news_deck(chapter=chap, reset_used=True)
+
+        idx = self.news_deck_queue.pop(0)
+        self.used_news_indices.append(idx)
+
+        raw_news = pool[idx]
+        news_type = int(raw_news.get("type", 1))
+        title = self._format_news_placeholders(str(raw_news.get("title", "")))
+        text = self._format_news_placeholders(str(raw_news.get("text", "")))
+        effect = raw_news.get("effect")
+
+        effect_summary = self._apply_news_effect(news_type, effect)
+
+        if news_type == 2:
+            category = "positive"
+        elif news_type == 3:
+            category = "danger"
+        else:
+            category = "info"
+
+        self.push_news(
+            title=title,
+            content=text,
+            category=category,
+            is_milestone=False,
+            news_type=news_type,
+            effect_text=effect_summary
+        )
+        self.state_changed.emit()
+
+    # ---------------- 게임 진행 & 업그레이드 ----------------
     def unlock_encyclopedia(self, item_id: str):
         for item in self.encyclopedia:
             if item["id"] == item_id and not item["unlocked"]:
@@ -338,14 +608,32 @@ class GameState(QObject):
     def add_passive_tokens(self, dt_sec: float):
         if self.is_ending_locked:
             return
-        if self.tokens_per_sec > 0:
-            self.tokens += self.tokens_per_sec * dt_sec
+
+        changed = False
+
+        # 활성 뉴스 버프 잔여 시간 차감
+        if self.active_news_buff is not None:
+            self.active_news_buff["remaining_sec"] -= dt_sec
+            if self.active_news_buff["remaining_sec"] <= 0:
+                self.active_news_buff = None
+            changed = True
+
+        eff_sec = self.effective_tokens_per_sec
+        if eff_sec > 0:
+            self.tokens += eff_sec * dt_sec
+            changed = True
+
+        if self.ai_activities and self.tokens_per_sec > 0:
+            self.ai_activities[0]["status"] = "가동 중"
+            self.ai_activities[0]["rate"] = f"{format_number(eff_sec)} Tk/s"
+
+        if changed:
             self.state_changed.emit()
 
     def complete_command(self):
         if self.is_ending_locked:
             return
-        self.tokens += self.tokens_per_command
+        self.tokens += self.effective_tokens_per_command
         self.state_changed.emit()
 
     def can_unlock(self, upgrade_id: str) -> bool:
@@ -367,17 +655,29 @@ class GameState(QObject):
         if self.tokens < target["cost"]:
             return False
 
+        prev_chap = self.get_current_chapter()
+
         self.tokens -= target["cost"]
         target["purchased"] = True
         self._apply_upgrade_effects(target)
+
+        new_chap = self.get_current_chapter()
+        if new_chap != prev_chap:
+            self._rebuild_news_deck(chapter=new_chap, reset_used=True)
+
         self.state_changed.emit()
 
         if isinstance(target.get("story_event"), dict):
             self.story_event_triggered.emit(target["story_event"])
 
+        # Chap 3 진입 시 AI 공식 작명 요청
+        if upgrade_id == "ch3_start" and not self.ai_named:
+            self.ai_naming_requested.emit()
+
         fx = target.get("effects", {})
         if isinstance(fx, dict) and fx.get("trigger_singularity"):
             self.is_ending_locked = True
+            self.active_news_buff = None
             self.state_changed.emit()
             self.singularity_reached.emit()
 
@@ -436,4 +736,4 @@ class GameState(QObject):
 
         if self.ai_activities and self.tokens_per_sec > 0:
             self.ai_activities[0]["status"] = "가동 중"
-            self.ai_activities[0]["rate"] = f"{int(self.tokens_per_sec):,} Tk/s"
+            self.ai_activities[0]["rate"] = f"{format_number(self.effective_tokens_per_sec)} Tk/s"

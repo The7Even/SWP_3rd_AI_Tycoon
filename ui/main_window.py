@@ -1,6 +1,6 @@
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
-    QLabel, QFrame, QPushButton, QMessageBox, QFileDialog, QDialog
+    QLabel, QFrame, QPushButton, QMessageBox, QFileDialog, QDialog, QInputDialog
 )
 from PyQt6.QtCore import Qt, QTimer, QPropertyAnimation, QParallelAnimationGroup, QPoint, QEasingCurve
 from PyQt6.QtGui import QFontMetrics
@@ -120,6 +120,7 @@ class MiniNewsTickerWidget(QWidget):
         category = news_item.get("category", "info")
         color_schemes = {
             "info": ("#fae17d", "#9a6700"),
+            "positive": ("#dafbe1", "#1a7f37"),
             "danger": ("#f28b96", "#a40e26"),
             "story": ("#d99be6", "#6639ba"),
             "guide": ("#ddf4ff", "#0969da"),
@@ -140,6 +141,12 @@ class MiniNewsTickerWidget(QWidget):
         """)
 
         title_text = news_item.get("title", "")
+        eff_text = news_item.get("effect_text", "")
+        if eff_text:
+            label.setToolTip(f"{title_text}\n{eff_text}")
+        else:
+            label.setToolTip(title_text)
+
         if is_guide:
             label.setWordWrap(True)
             label.setText(title_text)
@@ -255,6 +262,17 @@ class MainWindow(QMainWindow):
         self.news_toast_timer = QTimer(self)
         self.news_toast_timer.setSingleShot(True)
 
+        # 타이머 먼저 생성 (세이브 로드 시 시그널에서 참조할 수 있도록)
+        self.passive_timer = QTimer(self)
+        self.passive_timer.timeout.connect(self._on_tick)
+
+        # 45초마다 뉴스 1회 발행 (버프 30초 + 15초 휴식 사이클)
+        self.news_timer = QTimer(self)
+        self.news_timer.timeout.connect(self._on_random_news_tick)
+
+        self.autosave_timer = QTimer(self)
+        self.autosave_timer.timeout.connect(self._on_autosave_tick)
+
         self._init_ui()
         self.news_toast_timer.timeout.connect(lambda: self.lbl_news_toast.hide())
         self._connect_signals()
@@ -264,16 +282,9 @@ class MainWindow(QMainWindow):
         self.game_state.sync_persistent_endings(persistent_endings)
         self._load_initial_save()
 
-        self.passive_timer = QTimer(self)
-        self.passive_timer.timeout.connect(self._on_tick)
         self.passive_timer.start(100)
-
-        self.news_timer = QTimer(self)
-        self.news_timer.timeout.connect(self._on_random_news_tick)
-        self.news_timer.start(25000)
-
-        self.autosave_timer = QTimer(self)
-        self.autosave_timer.timeout.connect(self._on_autosave_tick)
+        if not self.game_state.is_ending_locked:
+            self.news_timer.start(45000)
         self.autosave_timer.start(30000)
 
         self._update_ui()
@@ -287,7 +298,11 @@ class MainWindow(QMainWindow):
         return not ch1_node.get("purchased", False)
 
     def _on_random_news_tick(self):
-        if not self._is_tutorial_active() and not self.game_state.is_ending_locked:
+        if (
+            not self._is_tutorial_active()
+            and not self.game_state.is_ending_locked
+            and self.game_state.get_current_chapter() < 8
+        ):
             self.game_state.trigger_random_news()
 
     def _load_initial_save(self):
@@ -353,13 +368,40 @@ class MainWindow(QMainWindow):
         self.lbl_tokens = QLabel("0 Token")
         self.lbl_tokens.setStyleSheet("color: #0969da; font-size: 20px; font-weight: bold;")
 
-        self.lbl_rates = QLabel("1 Tk/Command\n0 Tk/s")
-        self.lbl_rates.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        self.lbl_rates.setStyleSheet("color: #0969da; font-size: 13px; font-weight: bold;")
+        # 상단 우측 스펙(Tk/Command, Tk/s) 및 버프 삼각형 배지(▲/▼)
+        rates_box = QWidget()
+        rates_vbox = QVBoxLayout(rates_box)
+        rates_vbox.setContentsMargins(0, 0, 0, 0)
+        rates_vbox.setSpacing(1)
+
+        cmd_row = QHBoxLayout()
+        cmd_row.setContentsMargins(0, 0, 0, 0)
+        cmd_row.setSpacing(4)
+        cmd_row.addStretch()
+        self.lbl_cmd_buff_icon = QLabel("")
+        self.lbl_cmd_buff_icon.hide()
+        self.lbl_cmd_rate = QLabel("1 Tk/Command")
+        self.lbl_cmd_rate.setStyleSheet("color: #0969da; font-size: 13px; font-weight: bold;")
+        cmd_row.addWidget(self.lbl_cmd_buff_icon)
+        cmd_row.addWidget(self.lbl_cmd_rate)
+
+        sec_row = QHBoxLayout()
+        sec_row.setContentsMargins(0, 0, 0, 0)
+        sec_row.setSpacing(4)
+        sec_row.addStretch()
+        self.lbl_sec_buff_icon = QLabel("")
+        self.lbl_sec_buff_icon.hide()
+        self.lbl_sec_rate = QLabel("0 Tk/s")
+        self.lbl_sec_rate.setStyleSheet("color: #0969da; font-size: 13px; font-weight: bold;")
+        sec_row.addWidget(self.lbl_sec_buff_icon)
+        sec_row.addWidget(self.lbl_sec_rate)
+
+        rates_vbox.addLayout(cmd_row)
+        rates_vbox.addLayout(sec_row)
 
         top_layout.addWidget(self.lbl_tokens)
         top_layout.addStretch()
-        top_layout.addWidget(self.lbl_rates)
+        top_layout.addWidget(rates_box)
         left_layout.addWidget(top_bar)
 
         self.console_widget = VirtualConsoleWidget(self.game_state)
@@ -455,17 +497,33 @@ class MainWindow(QMainWindow):
         self.game_state.unread_news_changed.connect(self._update_unread_badge)
         self.game_state.story_event_triggered.connect(self._on_story_event_triggered)
         self.game_state.singularity_reached.connect(self._on_singularity_reached)
+        self.game_state.ai_naming_requested.connect(self._on_ai_naming_requested)
 
         self.console_widget.ending_completed.connect(self._on_ending_completed)
         self.console_widget.request_load_branch.connect(self._on_console_load_branch)
         self.console_widget.request_reset_game.connect(self._on_console_reset_game)
+
+    def _on_ai_naming_requested(self):
+        """Chap 3 공개 베타 진입 시 AI 이름 지정 다이얼로그"""
+        name, ok = QInputDialog.getText(
+            self,
+            "AI 공식 명칭 지정",
+            "공개 베타(v0.9-beta) 배포를 앞두고 AI의 이름을 지어주세요.\n(미입력 시 기본 명칭 'Proto-AI'가 유지됩니다.)",
+            text=self.game_state.ai_name
+        )
+        if ok and name.strip():
+            self.game_state.set_ai_name(name.strip())
+        else:
+            self.game_state.set_ai_name(self.game_state.ai_name)
 
     def _on_story_event_triggered(self, story_data: dict):
         dlg = StoryEventDialog(story_data, self)
         dlg.exec()
 
     def _on_singularity_reached(self):
-        """Chap 8 특이점 도달 시 콘솔을 AI 1대1 독대 모드로 전환"""
+        """Chap 8 특이점 도달 시 뉴스 타이머 정지 및 콘솔을 AI 1대1 독대 모드로 전환"""
+        if hasattr(self, "news_timer"):
+            self.news_timer.stop()
         self.console_widget.start_singularity_dialogue()
 
     def _on_ending_completed(self, ending_id: str):
@@ -480,6 +538,8 @@ class MainWindow(QMainWindow):
             self.game_state.from_dict(result)
             if not self.game_state.is_ending_locked:
                 self.console_widget.start_boot_sequence()
+                if not self.news_timer.isActive():
+                    self.news_timer.start(45000)
             self._sync_bottom_right_panel(force=True)
             QMessageBox.information(self, "분기 복원 완료", f"분기 슬롯 {slot} 시점으로 복원되었습니다.")
         else:
@@ -489,6 +549,8 @@ class MainWindow(QMainWindow):
         self.save_manager.clear_all_saves()
         self.game_state.reset_state(emit_signal=True, preserve_endings=True)
         self.console_widget.start_boot_sequence()
+        if not self.news_timer.isActive():
+            self.news_timer.start(45000)
         self._sync_bottom_right_panel(force=True)
 
     def _on_tick(self):
@@ -534,32 +596,61 @@ class MainWindow(QMainWindow):
                 self._update_unread_badge(self.game_state.unread_news_count)
                 self._was_tutorial_active = False
 
+    def _update_rate_badges(self):
+        gs = self.game_state
+        buff = gs.active_news_buff
+
+        # 기본 숨김 처리
+        self.lbl_cmd_buff_icon.hide()
+        self.lbl_sec_buff_icon.hide()
+        self.lbl_cmd_rate.setStyleSheet("color: #0969da; font-size: 13px; font-weight: bold;")
+        self.lbl_sec_rate.setStyleSheet("color: #0969da; font-size: 13px; font-weight: bold;")
+        self.lbl_cmd_rate.setToolTip("")
+        self.lbl_sec_rate.setToolTip("")
+
+        if not buff:
+            return
+
+        target = buff.get("target")
+        is_pos = bool(buff.get("is_positive", True))
+        rem = max(1, int(round(buff.get("remaining_sec", 0))))
+        summary = buff.get("summary", "")
+
+        icon_char = "▲" if is_pos else "▼"
+        icon_color = "#1a7f37" if is_pos else "#cf222e"
+        tooltip_text = f"{summary}\n남은 시간: {rem}초"
+
+        if target == "command_rate":
+            self.lbl_cmd_buff_icon.setText(icon_char)
+            self.lbl_cmd_buff_icon.setStyleSheet(f"color: {icon_color}; font-size: 12px; font-weight: bold;")
+            self.lbl_cmd_buff_icon.setToolTip(tooltip_text)
+            self.lbl_cmd_buff_icon.show()
+            self.lbl_cmd_rate.setStyleSheet(f"color: {icon_color}; font-size: 13px; font-weight: bold;")
+            self.lbl_cmd_rate.setToolTip(tooltip_text)
+        elif target == "passive_rate":
+            self.lbl_sec_buff_icon.setText(icon_char)
+            self.lbl_sec_buff_icon.setStyleSheet(f"color: {icon_color}; font-size: 12px; font-weight: bold;")
+            self.lbl_sec_buff_icon.setToolTip(tooltip_text)
+            self.lbl_sec_buff_icon.show()
+            self.lbl_sec_rate.setStyleSheet(f"color: {icon_color}; font-size: 13px; font-weight: bold;")
+            self.lbl_sec_rate.setToolTip(tooltip_text)
+
     def _update_ui(self):
         gs = self.game_state
         self.lbl_tokens.setText(f"{format_number(gs.tokens)} Token")
-        self.lbl_rates.setText(
-            f"{format_number(gs.tokens_per_command)} Tk/Command\n"
-            f"{format_number(gs.tokens_per_sec)} Tk/s"
-        )
+        self.lbl_cmd_rate.setText(f"{format_number(gs.effective_tokens_per_command)} Tk/Command")
+        self.lbl_sec_rate.setText(f"{format_number(gs.effective_tokens_per_sec)} Tk/s")
+        self._update_rate_badges()
 
         s = gs.specs
         self.lbl_specs.setText(
-            f"Specs :\n"
+            f"Specs ({gs.ai_name} {gs.get_ai_version()}) :\n"
             f"CPU : {s['CPU']}\n"
             f"GPU : {s['GPU']}\n"
             f"RAM : {s['RAM']}\n"
             f"STORAGE : {s['STORAGE']}"
         )
         self.lbl_bench.setText(f"BENCH_SCORE : {format_number(s['BENCH_SCORE'])}")
-
-        if (
-            gs.tokens == 0
-            and not gs.news_history
-            and not any(u["purchased"] for u in gs.upgrades)
-            and not gs.is_ending_locked
-            and self.console_widget._boot_step >= len(self.console_widget.BOOT_SEQUENCE)
-        ):
-            self.console_widget.start_boot_sequence()
 
         self._sync_bottom_right_panel(force=False)
         self.tree_widget.refresh_tree()
@@ -583,13 +674,24 @@ class MainWindow(QMainWindow):
         if news_item.get("is_milestone", False):
             self._show_news_popup(auto_triggered=True)
         else:
-            is_danger = (news_item.get("category") == "danger")
-            if is_danger:
-                self.lbl_news_toast.setText("긴급 속보 도착")
+            category = news_item.get("category", "info")
+            if category == "danger":
+                self.lbl_news_toast.setText("악재 속보 도착")
                 self.lbl_news_toast.setStyleSheet("""
                     background-color: #ffebe9;
                     color: #cf222e;
                     border: 1px solid #ff8182;
+                    border-radius: 4px;
+                    padding: 1px 6px;
+                    font-size: 11px;
+                    font-weight: bold;
+                """)
+            elif category == "positive":
+                self.lbl_news_toast.setText("호재 뉴스 도착")
+                self.lbl_news_toast.setStyleSheet("""
+                    background-color: #dafbe1;
+                    color: #1a7f37;
+                    border: 1px solid #4ac26b;
                     border-radius: 4px;
                     padding: 1px 6px;
                     font-size: 11px;

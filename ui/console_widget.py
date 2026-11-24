@@ -135,6 +135,12 @@ class VirtualConsoleWidget(QFrame):
         self.boot_timer.setSingleShot(True)
         self.boot_timer.timeout.connect(self._step_boot_sequence)
 
+        # 블록 커서 깜빡임 타이머
+        self._cursor_visible = True
+        self.cursor_blink_timer = QTimer(self)
+        self.cursor_blink_timer.timeout.connect(self._toggle_cursor_blink)
+        self.cursor_blink_timer.start(530)
+
         self.game_state.command_tier_changed.connect(self._on_tier_changed)
         self.game_state.state_changed.connect(self._on_state_updated)
 
@@ -153,6 +159,7 @@ class VirtualConsoleWidget(QFrame):
                 return None
             out_str = str(
                 item.get("output")
+                or item.get("out")
                 or item.get("response")
                 or item.get("log")
                 or item.get("result")
@@ -326,6 +333,12 @@ class VirtualConsoleWidget(QFrame):
     def current_target(self) -> str:
         return self.current_cmd_entry.get("cmd", "")
 
+    def _toggle_cursor_blink(self):
+        if self.is_booting or self.is_dialogue_mode:
+            return
+        self._cursor_visible = not self._cursor_visible
+        self._render_prompt_box()
+
     def _render_prompt_box(self):
         target = self.current_target
         if self.is_booting or not target:
@@ -352,11 +365,17 @@ class VirtualConsoleWidget(QFrame):
         if remain_idx < len(target):
             next_char = self._escape_html(target[remain_idx])
             rest_chars = self._escape_html(target[remain_idx + 1:])
-            html += f'<span style="color:#8b949e; text-decoration:underline;">{next_char}</span>'
+            if self._cursor_visible:
+                html += f'<span style="background-color:#3fb950; color:#0d1117; font-weight:bold;">{next_char}</span>'
+            else:
+                html += f'<span style="color:#8b949e;">{next_char}</span>'
             if rest_chars:
                 html += f'<span style="color:#8b949e;">{rest_chars}</span>'
         else:
-            html += '<span style="color:#3fb950; text-decoration:underline;">&nbsp;</span>'
+            if self._cursor_visible:
+                html += '<span style="background-color:#3fb950; color:#0d1117;">&nbsp;</span>'
+            else:
+                html += '<span>&nbsp;</span>'
 
         self.prompt_box.setHtml(html)
 
@@ -390,6 +409,8 @@ class VirtualConsoleWidget(QFrame):
             self.current_cmd_entry = dict(random.choice(pool))
 
         self.typed_text = ""
+        self._cursor_visible = True
+        self.cursor_blink_timer.start(530)
         self._render_prompt_box()
 
     def handle_char_input(self, ch: str):
@@ -398,6 +419,8 @@ class VirtualConsoleWidget(QFrame):
             return
 
         self.typed_text += ch
+        self._cursor_visible = True
+        self.cursor_blink_timer.start(530)
         self._apply_prompt_border("#2da44e" if target.startswith(self.typed_text) else "#f85149")
         self._render_prompt_box()
 
@@ -405,6 +428,8 @@ class VirtualConsoleWidget(QFrame):
         if not self.typed_text:
             return
         self.typed_text = self.typed_text[:-1]
+        self._cursor_visible = True
+        self.cursor_blink_timer.start(530)
         self._apply_prompt_border("#2da44e" if self.current_target.startswith(self.typed_text) else "#f85149")
         self._render_prompt_box()
 
@@ -413,7 +438,11 @@ class VirtualConsoleWidget(QFrame):
         if not target:
             return
         if self.typed_text == target:
-            earned = self.game_state.tokens_per_command
+            earned = getattr(
+                self.game_state,
+                "effective_tokens_per_command",
+                self.game_state.tokens_per_command
+            )
             runtime_out = self.current_cmd_entry.get("output", "[RUNTIME] 명령어 실행 사이클 완료")
 
             self.game_state.complete_command()
