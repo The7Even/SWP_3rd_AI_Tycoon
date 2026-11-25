@@ -252,22 +252,22 @@
       }
     },
     {
-      "id": "ch2_hw_rtx3060",
+      "id": "ch2_hw_rtx2070",
       "chapter": 2,
       "row": 10,
       "col": 3,
-      "name": "RTX 3060 구입",
+      "name": "RTX 2070 구입",
       "type": "passive",
       "cost": 1050,
       "req": [
         "ch2_start"
       ],
-      "desc": "[하드웨어/패시브] 초당 토큰 +40, 도감 해금, RTX 3060 획득",
+      "desc": "[하드웨어/패시브] 초당 토큰 +40, 도감 해금, GPU 업그레이드",
       "effects": {
         "sec_add": 40,
         "bench_add": 2500,
-        "spec_gpu": "RTX 3060 12GB",
-        "unlock_dex": "col_rtx3060"
+        "spec_gpu": "RTX 2070 8GB",
+        "unlock_dex": "col_rtx2070"
       }
     },
     {
@@ -292,17 +292,17 @@
       "chapter": 2,
       "row": 11,
       "col": 3,
-      "name": "DDR4 64GB 구입",
+      "name": "DDR4 32GB 구입",
       "type": "passive",
       "cost": 1550,
       "req": [
-        "ch2_hw_rtx3060"
+        "ch2_hw_rtx2070"
       ],
-      "desc": "[하드웨어/패시브] 초당 토큰 +60, RAM 64GB 획득",
+      "desc": "[하드웨어/패시브] 초당 토큰 +60, RAM 업그레이드",
       "effects": {
         "sec_add": 60,
         "bench_add": 1800,
-        "spec_ram": "DDR4 64GB"
+        "spec_ram": "DDR4 16GB×2"
       }
     },
     {
@@ -449,17 +449,17 @@
       "chapter": 3,
       "row": 17,
       "col": 3,
-      "name": "듀얼 RTX 3060 사용",
+      "name": "RTX 3080 교체",
       "type": "passive",
       "cost": 8400,
       "req": [
         "ch3_neu_git"
       ],
-      "desc": "[하드웨어/패시브] 초당 토큰 +220, 듀얼 GPU 병렬화",
+      "desc": "[하드웨어/패시브] 초당 토큰 +220, GPU 업그레이드",
       "effects": {
         "sec_add": 220,
         "bench_add": 6000,
-        "spec_gpu": "Dual RTX 3060 (24GB)"
+        "spec_gpu": "RTX 3080 12GB"
       }
     },
     {
@@ -484,17 +484,17 @@
       "chapter": 3,
       "row": 18,
       "col": 3,
-      "name": "DDR5 128GB 교체",
+      "name": "DDR5 64GB 교체",
       "type": "passive",
       "cost": 11100,
       "req": [
         "ch3_hw_dual3060"
       ],
-      "desc": "[하드웨어/패시브] 초당 토큰 +350, RAM 128GB 획득",
+      "desc": "[하드웨어/패시브] 초당 토큰 +350, RAM 업그레이드",
       "effects": {
         "sec_add": 350,
         "bench_add": 8000,
-        "spec_ram": "DDR5 128GB ECC"
+        "spec_ram": "DDR5 64GB (32×2GB)"
       }
     },
     {
@@ -593,7 +593,7 @@
       "req": [
         "ch4_start"
       ],
-      "desc": "[하드웨어/패시브] 초당 토큰 +1,100, GPU 교체",
+      "desc": "[하드웨어/패시브] 초당 토큰 +1,100, GPU 업그레이드",
       "effects": {
         "sec_add": 1100,
         "bench_add": 25000,
@@ -778,16 +778,16 @@
         "bench_add": 55000
       }
     },
-   {
+    {
       "id": "ch5_mid",
       "chapter": 5,
-      "row": 32,
+      "row": 30,
       "col": 2,
       "name": "AI 3.0 Pro 출시",
       "type": "story",
       "cost": 220000,
       "req": [
-        "ch5_neu_billing"
+        "ch5_neu_api"
       ],
       "desc": "[Chap 5 마일스톤] 유료 플레이어 활동 해금, 전체 효율 1.5배",
       "effects": {
@@ -813,13 +813,13 @@
     {
       "id": "ch5_sw_spec",
       "chapter": 5,
-      "row": 30,
+      "row": 31,
       "col": 1,
       "name": "추측적 디코딩 적용",
       "type": "active",
       "cost": 150000,
       "req": [
-        "ch5_neu_api"
+        "ch5_mid"
       ],
       "desc": "[소프트웨어/액티브] 명령어당 토큰 1.6배, 쿨다운 15ms 단축",
       "effects": {
@@ -831,15 +831,15 @@
     {
       "id": "ch5_hw_nvme_raid",
       "chapter": 5,
-      "row": 30,
+      "row": 31,
       "col": 3,
       "name": "NVMe RAID 8TB 구입",
       "type": "passive",
       "cost": 155000,
       "req": [
-        "ch5_neu_api"
+        "ch5_mid"
       ],
-      "desc": "[하드웨어/패시브] 초당 토큰 +11,000, 스토리지 8TB 획득",
+      "desc": "[하드웨어/패시브] 초당 토큰 +11,000, 스토리지 업그레이드",
       "effects": {
         "sec_add": 11000,
         "bench_add": 85000,
@@ -849,7 +849,7 @@
     {
       "id": "ch5_neu_billing",
       "chapter": 5,
-      "row": 31,
+      "row": 32,
       "col": 2,
       "name": "구독 결제 연동",
       "type": "common",
@@ -867,14 +867,13 @@
     {
       "id": "ch6_start",
       "chapter": 6,
-      "row": 35,
+      "row": 33,
       "col": 2,
       "name": "AI 4.0 교육 채택",
       "type": "story",
       "cost": 520000,
       "req": [
-        "ch6_sw_rag",
-        "ch6_hw_h100"
+        "ch5_neu_billing"
       ],
       "desc": "[Chap 6 시작] 전체 생산량 1.5배 증가",
       "effects": {
@@ -888,23 +887,6 @@
         "title": "AI 4.0을 개발했다. 이제 학교 수업에서도 내 AI를 사용한다.",
         "node_role": "시작 노드",
         "content": "발전이 순조롭게 계획대로 진행되고 있다. 사람들 입에도 내 이름과 AI가 오르내린다."
-      }
-    },
-    {
-      "id": "ch6_LF_cxt",
-      "chapter": 6,
-      "row": 33,
-      "col": 2,
-      "name": "장문 컨텍스트 적용",
-      "type": "common",
-      "cost": 300000,
-      "req": [
-        "ch5_end"
-      ],
-      "desc": "1M 토큰 컨텍스트 처리, 명령어당 +12,000",
-      "effects": {
-        "cmd_add": 12000,
-        "bench_add": 150000
       }
     },
     {
@@ -943,6 +925,24 @@
       }
     },
     {
+      "id": "ch6_LF_cxt",
+      "chapter": 6,
+      "row": 35,
+      "col": 2,
+      "name": "장문 컨텍스트 적용",
+      "type": "common",
+      "cost": 300000,
+      "req": [
+        "ch6_sw_rag",
+        "ch6_hw_h100"
+      ],
+      "desc": "1M 토큰 컨텍스트 처리, 명령어당 +12,000",
+      "effects": {
+        "cmd_add": 12000,
+        "bench_add": 150000
+      }
+    },
+    {
       "id": "ch6_sw_triton",
       "chapter": 6,
       "row": 36,
@@ -951,7 +951,7 @@
       "type": "active",
       "cost": 680000,
       "req": [
-        "ch6_mid"
+        "ch6_LF_cxt"
       ],
       "desc": "[소프트웨어/액티브] 명령어당 토큰 +35,000",
       "effects": {
@@ -968,7 +968,7 @@
       "type": "passive",
       "cost": 720000,
       "req": [
-        "ch6_mid"
+        "ch6_LF_cxt"
       ],
       "desc": "[하드웨어/패시브] 초당 토큰 +95,000, 서버 CPU & RAM 획득",
       "effects": {

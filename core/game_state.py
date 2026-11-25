@@ -54,15 +54,15 @@ class GameState(QObject):
     # 실제 upgrades.json 노드 ID -> 도감(encyclopedia) 자동 해금 매핑
     NODE_DEX_UNLOCK_MAP = {
         "ch1_start": "col_dorm_rig",
-        "ch1_hw_gpu0": "col_rtx3060",
         "ch2_start": "col_korean_patch",
+        "ch2_hw_rtx3060": "col_rtx2070",
         "ch3_start": "col_official_name",
         "ch3_neu_demo": "col_first_demo",
         "ch4_end": "col_small_llm",
         "ch4_hw_rtx4090": "col_rtx4090",
         "ch5_neu_billing": "col_pro_sub",
         "ch5_hw_a100": "col_a100_cluster",
-        "ch5_end": "col_ai_3_0",
+        "ch5_mid": "col_ai_3_0",
         "ch6_neu_research": "col_auto_research",
         "ch7_sw_selfcode": "col_agi_spark",
         "ch7_hw_quantum": "col_quantum_core",
@@ -97,7 +97,7 @@ class GameState(QObject):
             "key": "paid_pro",
             "name": "유료 구독자(Pro) 응답 서비스",
             "unlock_hint": "잠김 (Chap 5 AI 3.0 Pro 출시 후 해금)",
-            "unlock_node": "ch5_end",
+            "unlock_node": "ch5_mid",
             "weight": 8.0,
         },
         {
@@ -329,9 +329,9 @@ class GameState(QObject):
                 "unlocked": False,
             },
             {
-                "id": "col_rtx3060",
-                "name": "03. 가성비의 제왕 RTX 3060",
-                "desc": "중고 그래픽카드를 영입해 본격적인 병렬 텐서 연산의 첫발을 내디뎠다.",
+                "id": "col_rtx2070",
+                "name": "03. 텐서 코어의 시작 RTX 2070",
+                "desc": "RTX 2070을 영입해 전용 텐서 코어 기반의 본격적인 딥러닝 연산을 시작했다.",
                 "unlocked": False,
             },
             {
@@ -503,25 +503,23 @@ class GameState(QObject):
         if "ch7_start" in purchased_ids:
             return "v5.1"
 
-        # Chap 6: v3.1 ~ v3.2 -> v4.0 -> v4.1 ~ v4.2 -> v5.0
+        # Chap 6: v3.1 (ch6_start) -> v3.2 -> v4.0 (ch6_LF_cxt) -> v4.1 -> v4.2 -> v5.0 (ch6_end)
         if "ch6_end" in purchased_ids:
             return "v5.0"
         if "ch6_neu_research" in purchased_ids:
             return "v4.2"
         if "ch6_sw_triton" in purchased_ids or "ch6_hw_epyc" in purchased_ids:
             return "v4.1"
-        if "ch6_mid" in purchased_ids:
+        if "ch6_LF_cxt" in purchased_ids or "ch6_mid" in purchased_ids:
             return "v4.0"
         if "ch6_sw_rag" in purchased_ids or "ch6_hw_h100" in purchased_ids:
             return "v3.2"
         if "ch6_start" in purchased_ids:
             return "v3.1"
 
-        # Chap 5: v2.1 ~ v2.4 -> v3.0
-        if "ch5_end" in purchased_ids:
+        # Chap 5: v2.1 -> v2.2 -> v2.3 -> v3.0 (ch5_mid)
+        if "ch5_mid" in purchased_ids or "ch5_end" in purchased_ids:
             return "v3.0"
-        if "ch5_sw_spec" in purchased_ids or "ch5_hw_nvme_raid" in purchased_ids or "ch5_neu_billing" in purchased_ids:
-            return "v2.4"
         if "ch5_neu_api" in purchased_ids:
             return "v2.3"
         if "ch5_sw_moe" in purchased_ids or "ch5_hw_a100" in purchased_ids:
