@@ -643,9 +643,36 @@ class GameState(QObject):
             self.unread_news_changed.emit(0)
 
     # ---------------- 세이브 / 로드 ----------------
+    def build_save_summary(self) -> dict:
+        purchased_cnt = sum(1 for u in self.upgrades if u.get("purchased"))
+        total_upgs = len(self.upgrades)
+
+        # 정규 스토리 도감(16) + 엔딩(기본 4 + 히든 1 = 5) = 총 21개
+        story_dex_unlocked = sum(1 for d in self.encyclopedia if d.get("unlocked"))
+        story_dex_total = len(self.encyclopedia)
+        endings_unlocked_cnt = len(self.unlocked_endings & self.VALID_ENDING_IDS)
+        endings_total = len(self.ENDINGS_CATALOG)
+
+        dex_unlocked = story_dex_unlocked + endings_unlocked_cnt
+        dex_total = story_dex_total + endings_total
+
+        return {
+            "saved_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "ai_name": self.ai_name,
+            "ai_version": self.get_ai_version(),
+            "chapter": self.get_current_chapter(),
+            "tokens": self.tokens,
+            "tokens_per_sec": self.effective_tokens_per_sec,
+            "upgrade_progress": f"{purchased_cnt}/{total_upgs}",
+            "dex_progress": f"{dex_unlocked}/{dex_total}",
+            "unlocked_endings": sorted(self.unlocked_endings & self.VALID_ENDING_IDS),
+            "is_ending_locked": self.is_ending_locked,
+        }
+
     def to_dict(self) -> dict:
         return {
             "version": 7,
+            "summary": self.build_save_summary(),
             "tokens": self.tokens,
             "tokens_per_command": self.tokens_per_command,
             "tokens_per_sec": self.tokens_per_sec,

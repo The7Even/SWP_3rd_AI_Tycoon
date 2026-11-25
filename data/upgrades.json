@@ -53,20 +53,6 @@
       }
     },
     {
-      "id": "ch0_new_2",
-      "chapter": 0,
-      "row": 3,
-      "col": 2,
-      "name": "새 업그레이드",
-      "type": "common",
-      "cost": 100,
-      "req": [],
-      "desc": "새 노드 설명",
-      "effects": {
-        "cmd_add": 10
-      }
-    },
-    {
       "id": "ch1_start",
       "chapter": 1,
       "row": 3,

@@ -6,6 +6,7 @@ from PyQt6.QtWidgets import (
     QTextEdit, QMessageBox, QFileDialog, QApplication
 )
 from PyQt6.QtCore import Qt, QPropertyAnimation, QPoint, QEasingCurve, QTimer
+from core.save_preview import get_save_slot_preview
 
 
 class NewsCardWidget(QFrame):
@@ -269,6 +270,9 @@ class NewsDialog(QDialog):
                 padding: 6px 12px; font-weight: bold; font-size: 12px;
             }
             QPushButton:hover { background-color: #0860ca; }
+            QPushButton:disabled {
+                background-color: #d0d7de; color: #8c959f;
+            }
         """
         btn_normal_style = """
             QPushButton {
@@ -308,35 +312,67 @@ class NewsDialog(QDialog):
         auto_layout.addLayout(auto_btn_row)
         layout.addWidget(sec_auto)
 
-        # 2. 분기 저장 슬롯
+        # 2. 분기 저장 슬롯 (진행도 미리보기 카드 지원)
         sec_branch = QFrame()
         sec_branch.setStyleSheet(card_style)
         branch_layout = QVBoxLayout(sec_branch)
-        branch_layout.setSpacing(8)
+        branch_layout.setSpacing(10)
 
         lbl_branch_title = QLabel("2. 분기 저장 슬롯 (엔딩 분기 되돌리기용 체크포인트)")
         lbl_branch_title.setStyleSheet("background-color: transparent; font-size: 14px; font-weight: bold; border: none;")
         branch_layout.addWidget(lbl_branch_title)
 
-        self.branch_info_labels = {}
+        self.branch_slot_widgets = {}
         for slot in (1, 2, 3):
-            row = QHBoxLayout()
-            lbl_slot = QLabel(f"슬롯 {slot}: 비어 있음")
-            lbl_slot.setStyleSheet("background-color: transparent; font-size: 12px; color: #1f2328; border: none;")
-            self.branch_info_labels[slot] = lbl_slot
+            slot_card = QFrame()
+            slot_card.setStyleSheet("""
+                QFrame {
+                    background-color: #ffffff;
+                    border: 1px solid #d0d7de;
+                    border-radius: 5px;
+                    padding: 8px 10px;
+                }
+            """)
+            row = QHBoxLayout(slot_card)
+            row.setContentsMargins(4, 2, 4, 2)
+            row.setSpacing(10)
+
+            info_col = QVBoxLayout()
+            info_col.setSpacing(3)
+
+            lbl_slot_title = QLabel(f"슬롯 {slot} · 비어 있는 슬롯")
+            lbl_slot_title.setStyleSheet(
+                "background-color: transparent; font-size: 13px; font-weight: bold; color: #1f2328; border: none;"
+            )
+            lbl_slot_sub = QLabel("저장된 데이터가 없습니다.")
+            lbl_slot_sub.setStyleSheet(
+                "background-color: transparent; font-size: 11px; color: #57606a; border: none;"
+            )
+
+            info_col.addWidget(lbl_slot_title)
+            info_col.addWidget(lbl_slot_sub)
 
             btn_b_save = QPushButton("분기 저장")
             btn_b_save.setStyleSheet(btn_normal_style)
+            btn_b_save.setCursor(Qt.CursorShape.PointingHandCursor)
             btn_b_save.clicked.connect(lambda checked, s=slot: self._on_branch_save(s))
 
             btn_b_load = QPushButton("불러오기")
             btn_b_load.setStyleSheet(btn_primary_style)
+            btn_b_load.setCursor(Qt.CursorShape.PointingHandCursor)
             btn_b_load.clicked.connect(lambda checked, s=slot: self._on_branch_load(s))
 
-            row.addWidget(lbl_slot, stretch=1)
+            row.addLayout(info_col, stretch=1)
             row.addWidget(btn_b_save)
             row.addWidget(btn_b_load)
-            branch_layout.addLayout(row)
+            branch_layout.addWidget(slot_card)
+
+            self.branch_slot_widgets[slot] = {
+                "card": slot_card,
+                "title": lbl_slot_title,
+                "sub": lbl_slot_sub,
+                "load_btn": btn_b_load,
+            }
 
         layout.addWidget(sec_branch)
 
@@ -453,6 +489,14 @@ class NewsDialog(QDialog):
         layout.addWidget(sec_reset)
 
         return container
+
+    def _get_branch_save_path(self, slot: int) -> str:
+        """save_manager에서 분기 슬롯 파일 경로를 안전하게 조회"""
+        if hasattr(self.save_manager, "get_branch_path"):
+            return self.save_manager.get_branch_path(slot)
+        if hasattr(self.save_manager, "_branch_path"):
+            return self.save_manager._branch_path(slot)
+        return os.path.join(self.save_manager.save_dir, f"branch_slot_{slot}.json")
 
     def _on_select_debug_tier(self, tier: int):
         self.game_state.set_command_tier(tier)
@@ -612,8 +656,41 @@ class NewsDialog(QDialog):
             self.lbl_save_status.setText(
                 f"최근 저장: {self.save_manager.last_saved_time} | 저장 경로: {os.path.abspath(self.save_manager.save_dir)}"
             )
-        for slot, lbl in self.branch_info_labels.items():
-            lbl.setText(f"슬롯 {slot}: {self.save_manager.get_branch_info(slot)}")
+
+        for slot, widgets in self.branch_slot_widgets.items():
+            slot_path = self._get_branch_save_path(slot)
+            preview = get_save_slot_preview(slot_path)
+
+            if preview["exists"]:
+                widgets["card"].setStyleSheet("""
+                    QFrame {
+                        background-color: #ddf4ff;
+                        border: 1px solid #54aeff;
+                        border-radius: 5px;
+                        padding: 8px 10px;
+                    }
+                """)
+                widgets["title"].setText(f"슬롯 {slot} · {preview['title']}")
+                widgets["title"].setStyleSheet(
+                    "background-color: transparent; font-size: 13px; font-weight: bold; color: #0969da; border: none;"
+                )
+                widgets["sub"].setText(preview["subtitle"])
+                widgets["load_btn"].setEnabled(True)
+            else:
+                widgets["card"].setStyleSheet("""
+                    QFrame {
+                        background-color: #ffffff;
+                        border: 1px solid #d0d7de;
+                        border-radius: 5px;
+                        padding: 8px 10px;
+                    }
+                """)
+                widgets["title"].setText(f"슬롯 {slot} · {preview['title']}")
+                widgets["title"].setStyleSheet(
+                    "background-color: transparent; font-size: 13px; font-weight: bold; color: #6e7781; border: none;"
+                )
+                widgets["sub"].setText(preview["subtitle"])
+                widgets["load_btn"].setEnabled(False)
 
         current_tier = getattr(self.game_state, "command_tier", 1)
         tier_descriptions = {
