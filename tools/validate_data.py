@@ -19,10 +19,30 @@ def load_json(rel_path: str):
         return json.load(f)
 
 
+def get_effective_balance_chapter(node: dict) -> int:
+    """
+    실제 플레이 체감 비용 구간 기준으로 챕터를 재분류:
+    - ch1_start -> Chap 0(튜토리얼 졸업 관문) 비용에 포함
+    - ch2_start -> Chap 1(Chap 1 졸업 관문) 비용에 포함
+    - ...
+    - ch7_start -> Chap 6 비용에 포함
+    - ch8_singularity -> Chap 7 비용에 포함
+    """
+    uid = node.get("id", "")
+    chap = int(node.get("chapter", 1))
+
+    if uid == "ch8_singularity":
+        return 7
+    for c in range(1, 8):
+        if uid == f"ch{c}_start":
+            return c - 1
+    return chap
+
+
 def validate_all():
-    print("=" * 60)
-    print("  AI 키우기 - 데이터 무결성 & 밸런스 검증 리포트")
-    print("=" * 60)
+    print("=" * 78)
+    print("  AI 키우기 - 데이터 무결성 & 실질 구간별 밸런스 검증 리포트")
+    print("=" * 78)
 
     upg_raw = load_json(os.path.join("data", "upgrades.json"))
     dlg_raw = load_json(os.path.join("data", "ai_dialogues.json"))
@@ -70,7 +90,6 @@ def validate_all():
             else:
                 children_map[r].append(uid)
 
-    # 도달 가능성(BFS) 체크
     visited = set()
     queue = list(roots)
     while queue:
@@ -98,29 +117,36 @@ def validate_all():
         if node_id not in id_map:
             warnings.append(f"NODE_DEX_UNLOCK_MAP의 노드 '{node_id}'가 upgrades.json에 없습니다.")
 
-    # 4. 챕터별 비용 및 스탯 누적 밸런스 시뮬레이션
-    print("\n[챕터별 트리 밸런스 요약]")
-    print(f"{'Chap':<6} | {'노드수':<6} | {'총 비용 합계':<16} | {'누적 Tk/Cmd':<14} | {'누적 Tk/s':<14}")
-    print("-" * 68)
+    # 4. 실질 플레이 구간별 비용 vs 고유 챕터 누적 스탯 시뮬레이션
+    print("\n[실질 챕터 구간별 비용 & 고유 챕터 누적 스탯 요약]")
+    print(f"{'구간':<12} | {'노드수':<6} | {'구간 총 비용':<18} | {'챕터 누적 Tk/Cmd':<16} | {'챕터 누적 Tk/s':<16}")
+    print("-" * 78)
 
     sim_state = GameState()
     for chap in range(0, 9):
-        chap_nodes = [u for u in upgrades if int(u.get("chapter", 1)) == chap]
-        if not chap_nodes:
+        # 비용은 다음 챕터 관문 노드(ch{chap+1}_start)까지 포함한 실질 구간 기준
+        cost_nodes = [u for u in upgrades if get_effective_balance_chapter(u) == chap]
+        # 스탯 효과는 해당 고유 챕터(node["chapter"] == chap) 소속 노드만 누적 반영
+        stat_nodes = [u for u in upgrades if int(u.get("chapter", 1)) == chap]
+
+        if not cost_nodes and not stat_nodes:
             continue
-        total_cost = sum(float(u.get("cost", 0)) for u in chap_nodes)
-        for u in chap_nodes:
+
+        total_cost = sum(float(u.get("cost", 0)) for u in cost_nodes)
+        for u in stat_nodes:
             u["purchased"] = True
             sim_state._apply_upgrade_effects(u)
+
+        gate_label = f"Ch.{chap}→Ch.{chap + 1}" if chap < 8 else "Ch.8"
         print(
-            f"Ch.{chap:<3} | {len(chap_nodes):<6} | "
-            f"{total_cost:<16,.0f} | "
-            f"{sim_state.tokens_per_command:<14,.1f} | "
-            f"{sim_state.tokens_per_sec:<14,.1f}"
+            f"{gate_label:<12} | {len(cost_nodes):<6} | "
+            f"{total_cost:<18,.0f} | "
+            f"{sim_state.tokens_per_command:<16,.1f} | "
+            f"{sim_state.tokens_per_sec:<16,.1f}"
         )
 
     # 5. 최종 결과 출력
-    print("\n" + "=" * 60)
+    print("\n" + "=" * 78)
     if errors:
         print(f"❌ 치명적 오류 {len(errors)}건 발견:")
         for e in errors:
@@ -136,7 +162,7 @@ def validate_all():
     if news_raw:
         items = news_raw.get("news", news_raw) if isinstance(news_raw, dict) else news_raw
         print(f"\n📰 로드된 뉴스 데이터: 총 {len(items)}건")
-    print("=" * 60)
+    print("=" * 78)
 
 
 if __name__ == "__main__":
