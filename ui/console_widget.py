@@ -2,7 +2,7 @@ import os
 import json
 import time
 import random
-from PyQt6.QtWidgets import QFrame, QVBoxLayout, QTextEdit, QLabel, QWidget
+from PyQt6.QtWidgets import QFrame, QVBoxLayout, QHBoxLayout, QTextEdit, QLabel, QWidget
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QTextCursor
 from core.number_format import format_number
@@ -178,6 +178,7 @@ class VirtualConsoleWidget(QFrame):
         self.game_state.command_tier_changed.connect(self._on_tier_changed)
         self.game_state.state_changed.connect(self._on_state_updated)
 
+        self._update_session_header()
         self.start_boot_sequence()
 
     @property
@@ -241,8 +242,37 @@ class VirtualConsoleWidget(QFrame):
 
     def _init_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(14, 14, 14, 12)
+        layout.setContentsMargins(16, 10, 16, 10)
         layout.setSpacing(8)
+
+        # 상단 세션 서브바 (챕터 언급 없이 세션 주소와 연결 상태만 표시)
+        session_bar = QFrame()
+        session_bar.setStyleSheet("QFrame { background-color: transparent; border-bottom: 1px dashed #21262d; }")
+        session_row = QHBoxLayout(session_bar)
+        session_row.setContentsMargins(2, 0, 2, 5)
+
+        self.lbl_session = QLabel("SESSION: local-node://proto-ai-core")
+        self.lbl_session.setStyleSheet("""
+            background-color: transparent;
+            color: #8b949e;
+            font-family: 'Consolas', 'D2Coding', monospace;
+            font-size: 11px;
+            border: none;
+        """)
+
+        self.lbl_conn = QLabel("● CONNECTED")
+        self.lbl_conn.setStyleSheet("""
+            background-color: transparent;
+            color: #3fb950;
+            font-family: 'Consolas', 'D2Coding', monospace;
+            font-size: 11px;
+            font-weight: bold;
+            border: none;
+        """)
+        session_row.addWidget(self.lbl_session)
+        session_row.addStretch()
+        session_row.addWidget(self.lbl_conn)
+        layout.addWidget(session_bar)
 
         self.log_view = ClickableLogView()
         self.log_view.setReadOnly(True)
@@ -256,12 +286,25 @@ class VirtualConsoleWidget(QFrame):
                 font-size: 14px;
                 padding: 4px;
             }
+            QScrollBar:vertical {
+                background: #0d1117;
+                width: 6px;
+                margin: 0px;
+            }
+            QScrollBar::handle:vertical {
+                background: #30363d;
+                border-radius: 3px;
+                min-height: 24px;
+            }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                height: 0px;
+            }
         """)
         self.log_view.clicked.connect(self._on_console_clicked)
         layout.addWidget(self.log_view, stretch=1)
 
         self.prompt_box = InlinePromptBox(self)
-        self._apply_prompt_border("#2da44e")
+        self._apply_prompt_border("#2ea043")
         layout.addWidget(self.prompt_box)
 
         self.dialogue_panel = QWidget()
@@ -273,8 +316,18 @@ class VirtualConsoleWidget(QFrame):
         layout.addWidget(self.dialogue_panel)
 
         self.lbl_status = QLabel(f"Latency: {self.game_state.input_cooldown_ms}ms")
-        self.lbl_status.setStyleSheet("color: #8b949e; font-size: 12px; padding-left: 2px;")
+        self.lbl_status.setStyleSheet("""
+            color: #8b949e;
+            font-family: 'Consolas', 'D2Coding', monospace;
+            font-size: 11px;
+            padding-left: 2px;
+        """)
         layout.addWidget(self.lbl_status)
+
+    def _update_session_header(self):
+        ai_name = getattr(self.game_state, "ai_name", "Proto-AI") or "Proto-AI"
+        slug = ai_name.strip().lower().replace(" ", "-")
+        self.lbl_session.setText(f"SESSION: local-node://{slug}-core")
 
     def mousePressEvent(self, event):
         super().mousePressEvent(event)
@@ -289,10 +342,10 @@ class VirtualConsoleWidget(QFrame):
     def _apply_prompt_border(self, border_color: str):
         self.prompt_box.setStyleSheet(f"""
             QTextEdit {{
-                background-color: #0d1117;
+                background-color: #090c10;
                 color: #c9d1d9;
-                border: 1px solid {border_color};
-                border-radius: 2px;
+                border: 1.5px solid {border_color};
+                border-radius: 6px;
                 font-family: 'Consolas', 'D2Coding', monospace;
                 font-size: 15px;
                 padding: 8px 12px;
@@ -322,13 +375,6 @@ class VirtualConsoleWidget(QFrame):
         self._pending_dev_line_idx = None
 
     def append_log(self, text: str, color: str = "#c9d1d9", bold: bool = False):
-        """
-        일반 로그 출력.
-        - 개발자 입력 줄이 이미 확정된 상태에서 AI가 스피너로 생각 중이거나 답변을 타이핑 중이라면:
-          개발자 입력 줄 바로 '위쪽'에 끼워 넣어 질문-답변 세트가 찢어지지 않게 유지한다.
-        - 개발자 입력이 아직 타이핑 중(_active_typing_html)이라면:
-          확정 로그 리스트 뒤에 추가되므로, 현재 타이핑 중인 줄이 자동으로 그 아래에 렌더링된다.
-        """
         line_html = self.format_line_html(text, color, bold)
         if self._pending_dev_line_idx is not None:
             self._log_lines_html.insert(self._pending_dev_line_idx, line_html)
@@ -390,6 +436,11 @@ class VirtualConsoleWidget(QFrame):
         self.auto_dialogue_timer.stop()
         self._reset_dialogue_state()
         self.is_booting = False
+        self.lbl_conn.setText("● SINGULARITY")
+        self.lbl_conn.setStyleSheet("""
+            background-color: transparent; color: #bc8cff;
+            font-family: 'Consolas', 'D2Coding', monospace; font-size: 11px; font-weight: bold; border: none;
+        """)
         self.singularity_ctrl.start()
 
     def _step_boot_sequence(self):
@@ -419,12 +470,12 @@ class VirtualConsoleWidget(QFrame):
     def _get_ai_dialogue_color(self) -> str:
         chap = self.game_state.get_current_chapter()
         if chap <= 2:
-            return "#a5d6ff"  # 초기 프로토타입: 스카이블루
+            return "#a5d6ff"
         elif chap <= 4:
-            return "#58a6ff"  # 성장기: 선명한 블루
+            return "#58a6ff"
         elif chap <= 6:
-            return "#d2a8ff"  # 고도화기: 라벤더 퍼플
-        return "#ff7b72"      # 특이점 임계: 코랄 레드
+            return "#d2a8ff"
+        return "#ff7b72"
 
     def _get_ai_thinking_label(self) -> str:
         chap = self.game_state.get_current_chapter()
@@ -437,7 +488,6 @@ class VirtualConsoleWidget(QFrame):
         return "고차원 연산 중..."
 
     def _get_ai_typing_interval_ms(self) -> int:
-        """AI가 진화할수록 출력 타이핑 속도가 빨라지는 연출"""
         chap = self.game_state.get_current_chapter()
         if chap <= 2:
             return 28
@@ -448,7 +498,6 @@ class VirtualConsoleWidget(QFrame):
         return 14
 
     def _is_tutorial_active(self) -> bool:
-        """Chap 1 시작 노드(ch1_start)를 구매하기 전(튜토리얼 구간)인지 확인"""
         upgrades = getattr(self.game_state, "upgrades", [])
         ch1_node = next((u for u in upgrades if u.get("id") == "ch1_start"), None)
         if ch1_node is not None:
@@ -464,13 +513,11 @@ class VirtualConsoleWidget(QFrame):
             return True
         if self._dialogue_phase is not None:
             return True
-        # Chap 3 진입 직후 AI 공식 이름 입력 팝업이 닫힐 때까지 대기
         if self.game_state.get_ai_version() == "v0.9-beta" and not getattr(self.game_state, "ai_named", True):
             return True
         return False
 
     def _check_priority_dialogue_queue(self):
-        """version_intros / node_triggers 대기열이 있으면 일반 타이머를 무시하고 즉시 대화 출력 시작"""
         if self._is_auto_dialogue_blocked():
             return
         queue = getattr(self.game_state, "pending_dialogue_queue", None)
@@ -478,7 +525,6 @@ class VirtualConsoleWidget(QFrame):
             return
 
         kind, key = queue.pop(0)
-        # 튜토리얼 구간 버전(v0.1~v0.3) 인트로는 튜토리얼 종료 후 불필요하므로 건너뜀
         if kind == "version" and key in ("v0.1", "v0.2", "v0.3"):
             self._check_priority_dialogue_queue()
             return
@@ -494,7 +540,6 @@ class VirtualConsoleWidget(QFrame):
             self._schedule_next_auto_dialogue()
 
     def _on_auto_dialogue_timeout(self):
-        """35~50초 랜덤 타이머 만료 시 현재 챕터 셔플 덱에서 1세트 출력"""
         if self._is_auto_dialogue_blocked() or getattr(self.game_state, "pending_dialogue_queue", None):
             self._schedule_next_auto_dialogue()
             return
@@ -512,7 +557,6 @@ class VirtualConsoleWidget(QFrame):
         self._schedule_next_auto_dialogue()
 
     def _start_dialogue_pair(self, dev_raw: str, ai_raw: str):
-        """1단계: 개발자 입력 프롬프트(> ...) 타자기 타이핑 시작"""
         self._active_dev_full_text = f"> {self._format_dialogue_text(dev_raw)}"
         self._active_ai_full_text = self._format_dialogue_text(ai_raw)
         self._dialogue_phase = "typing_dev"
@@ -521,19 +565,16 @@ class VirtualConsoleWidget(QFrame):
         self._step_dialogue_animation()
 
     def _step_dialogue_animation(self):
-        """개발자 입력 타자기 -> AI 스피너(뺑글뺑글) -> AI 응답 타자기 순차 연출"""
         if self._dialogue_phase == "typing_dev":
             self._typing_char_idx += 1
             partial = self._active_dev_full_text[:self._typing_char_idx]
             cursor = '<span style="color:#e6edf3;">▌</span>' if self._typing_char_idx < len(self._active_dev_full_text) else ""
-            # 개발자 입력은 밝은 화이트/실버(#e6edf3)로 출력
             self._active_typing_html = self.format_line_html(partial, color="#e6edf3", bold=True, cursor_suffix=cursor)
             self.render_log_view(active_line_html=self._active_typing_html)
 
             if self._typing_char_idx < len(self._active_dev_full_text):
                 self.dialogue_anim_timer.start(28)
             else:
-                # 개발자 입력 줄 확정 등록 후 AI 사고 스피너 단계 진입
                 final_dev_html = self.format_line_html(self._active_dev_full_text, color="#e6edf3", bold=True)
                 self._log_lines_html.append(final_dev_html)
                 if len(self._log_lines_html) > 160:
@@ -562,7 +603,6 @@ class VirtualConsoleWidget(QFrame):
                 self.render_log_view(active_line_html=self._active_typing_html)
                 self.dialogue_anim_timer.start(80)
             else:
-                # 스피너 종료 -> AI 답변 한 글자씩 타이핑 시작
                 self._dialogue_phase = "typing_ai"
                 self._typing_char_idx = 0
                 self._step_dialogue_animation()
@@ -578,7 +618,6 @@ class VirtualConsoleWidget(QFrame):
             if self._typing_char_idx < len(self._active_ai_full_text):
                 self.dialogue_anim_timer.start(self._get_ai_typing_interval_ms())
             else:
-                # AI 응답 완료 -> 개발자 입력 줄 바로 다음 인덱스에 확정 삽입
                 final_ai_html = self.format_line_html(f"  {self._active_ai_full_text}", color=ai_color, bold=False)
                 insert_pos = (
                     self._pending_dev_line_idx + 1
@@ -648,6 +687,7 @@ class VirtualConsoleWidget(QFrame):
             self._pick_next_command()
 
     def _on_state_updated(self):
+        self._update_session_header()
         if self.is_dialogue_mode:
             return
         cur_cd = self.game_state.input_cooldown_ms
@@ -685,7 +725,7 @@ class VirtualConsoleWidget(QFrame):
         self.typed_text += ch
         self._cursor_visible = True
         self.cursor_blink_timer.start(530)
-        self._apply_prompt_border("#2da44e" if target.startswith(self.typed_text) else "#f85149")
+        self._apply_prompt_border("#2ea043" if target.startswith(self.typed_text) else "#f85149")
         self._render_prompt_box()
 
     def handle_backspace(self):
@@ -694,7 +734,7 @@ class VirtualConsoleWidget(QFrame):
         self.typed_text = self.typed_text[:-1]
         self._cursor_visible = True
         self.cursor_blink_timer.start(530)
-        self._apply_prompt_border("#2da44e" if self.current_target.startswith(self.typed_text) else "#f85149")
+        self._apply_prompt_border("#2ea043" if self.current_target.startswith(self.typed_text) else "#f85149")
         self._render_prompt_box()
 
     def handle_enter(self):
@@ -714,7 +754,7 @@ class VirtualConsoleWidget(QFrame):
             self.append_log(f"  └ {runtime_out}", color="#8b949e")
 
             self.show_feedback(f"실행 완료! +{format_number(earned)} Token 획득", is_error=False)
-            self._apply_prompt_border("#2da44e")
+            self._apply_prompt_border("#2ea043")
             self._pick_next_command()
         else:
             self._apply_prompt_border("#f85149")
@@ -723,7 +763,10 @@ class VirtualConsoleWidget(QFrame):
     def on_cooldown_blocked(self, cooldown_ms: int):
         self._apply_prompt_border("#d29922")
         self.lbl_status.setText(f"[BUFFER BUSY] 입력 지연 제한 중 ({cooldown_ms}ms)")
-        self.lbl_status.setStyleSheet("color: #d29922; font-size: 12px; font-weight: bold; padding-left: 2px;")
+        self.lbl_status.setStyleSheet("""
+            color: #d29922; font-family: 'Consolas', 'D2Coding', monospace;
+            font-size: 11px; font-weight: bold; padding-left: 2px;
+        """)
         self.feedback_timer.start(400)
 
     def show_feedback(self, msg: str, is_error: bool = False):
@@ -731,7 +774,10 @@ class VirtualConsoleWidget(QFrame):
             return
         color = "#f85149" if is_error else "#3fb950"
         self.lbl_status.setText(msg)
-        self.lbl_status.setStyleSheet(f"color: {color}; font-size: 12px; font-weight: bold; padding-left: 2px;")
+        self.lbl_status.setStyleSheet(f"""
+            color: {color}; font-family: 'Consolas', 'D2Coding', monospace;
+            font-size: 11px; font-weight: bold; padding-left: 2px;
+        """)
         self.feedback_timer.start(1100)
 
     def _reset_prompt_border(self):
@@ -740,6 +786,9 @@ class VirtualConsoleWidget(QFrame):
         if self.current_target and not self.current_target.startswith(self.typed_text):
             self._apply_prompt_border("#f85149")
         else:
-            self._apply_prompt_border("#2da44e")
+            self._apply_prompt_border("#2ea043")
         self.lbl_status.setText(f"Latency: {self.game_state.input_cooldown_ms}ms")
-        self.lbl_status.setStyleSheet("color: #8b949e; font-size: 12px; padding-left: 2px;")
+        self.lbl_status.setStyleSheet("""
+            color: #8b949e; font-family: 'Consolas', 'D2Coding', monospace;
+            font-size: 11px; padding-left: 2px;
+        """)

@@ -3,30 +3,52 @@ import time
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QScrollArea, QWidget, QFrame, QStackedWidget,
-    QTextEdit, QMessageBox, QFileDialog, QApplication
+    QTextEdit, QMessageBox, QFileDialog, QApplication, QProgressBar
 )
 from PyQt6.QtCore import Qt, QPropertyAnimation, QPoint, QEasingCurve, QTimer
 from core.save_preview import get_save_slot_preview
+from ui.window_style import apply_dark_titlebar
+
+
+DARK_SCROLL_QSS = """
+    QScrollArea {
+        border: none;
+        background-color: #0d1117;
+    }
+    QScrollBar:vertical {
+        background: #0d1117;
+        width: 6px;
+        margin: 0px;
+    }
+    QScrollBar::handle:vertical {
+        background: #30363d;
+        border-radius: 3px;
+        min-height: 24px;
+    }
+    QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+        height: 0px;
+    }
+"""
 
 
 class NewsCardWidget(QFrame):
-    """파스텔 톤 뉴스 카드 (제목 + 날짜 + 가로선 + 요약 본문 + 하단 효과 요약)"""
+    """다크 틴트 뉴스 카드 (제목 + 날짜 + 가로선 + 요약 본문 + 하단 효과 요약)"""
 
     def __init__(self, news_item: dict):
         super().__init__()
         category = news_item.get("category", "info")
         color_schemes = {
-            "info": ("#fae17d", "#9a6700"),
-            "positive": ("#dafbe1", "#1a7f37"),
-            "danger": ("#f28b96", "#a40e26"),
-            "story": ("#d99be6", "#6639ba")
+            "info":     ("#272115", "#d29922", "#f2cc60"),
+            "positive": ("#12261e", "#2ea043", "#7ee787"),
+            "danger":   ("#2c1619", "#f85149", "#ffa198"),
+            "story":    ("#241833", "#a371f7", "#e2c5ff"),
         }
-        bg_color, border_color = color_schemes.get(category, ("#fae17d", "#9a6700"))
+        bg_color, border_color, title_color = color_schemes.get(category, ("#272115", "#d29922", "#f2cc60"))
 
         self.setStyleSheet(f"""
             NewsCardWidget {{
                 background-color: {bg_color};
-                border: 2px solid {border_color};
+                border: 1.5px solid {border_color};
                 border-radius: 6px;
             }}
         """)
@@ -37,11 +59,12 @@ class NewsCardWidget(QFrame):
 
         header_row = QHBoxLayout()
         lbl_title = QLabel(news_item["title"])
-        lbl_title.setStyleSheet("""
+        lbl_title.setWordWrap(True)
+        lbl_title.setStyleSheet(f"""
             background-color: transparent;
-            font-size: 15px;
+            font-size: 14px;
             font-weight: bold;
-            color: #1f2328;
+            color: {title_color};
             border: none;
         """)
 
@@ -49,9 +72,10 @@ class NewsCardWidget(QFrame):
         lbl_date.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         lbl_date.setStyleSheet("""
             background-color: transparent;
-            font-size: 13px;
+            font-family: 'Consolas', 'D2Coding', monospace;
+            font-size: 12px;
             font-weight: bold;
-            color: #24292f;
+            color: #8b949e;
             border: none;
         """)
 
@@ -68,39 +92,47 @@ class NewsCardWidget(QFrame):
         lbl_content.setWordWrap(True)
         lbl_content.setStyleSheet("""
             background-color: transparent;
-            font-size: 12px;
-            color: #1f2328;
+            font-size: 12.5px;
+            color: #c9d1d9;
             border: none;
-            line-height: 1.4;
+            line-height: 1.45;
         """)
         layout.addWidget(lbl_content)
 
         effect_text = news_item.get("effect_text", "").strip()
         if effect_text:
-            eff_color = "#116329" if category == "positive" else ("#82071e" if category == "danger" else "#24292f")
             lbl_effect = QLabel(effect_text)
+            lbl_effect.setWordWrap(True)
             lbl_effect.setStyleSheet(f"""
-                background-color: rgba(255, 255, 255, 0.45);
+                background-color: rgba(1, 4, 9, 0.42);
                 border-radius: 4px;
-                padding: 3px 8px;
-                font-size: 12px;
+                padding: 4px 8px;
+                font-family: 'Consolas', 'D2Coding', monospace;
+                font-size: 11.5px;
                 font-weight: bold;
-                color: {eff_color};
+                color: {title_color};
                 border: none;
             """)
             layout.addWidget(lbl_effect)
 
 
 class NewsDialog(QDialog):
-    """확장 팝업창 (최근 뉴스 / AI 활동 / 도감 & 엔딩 기록 / 설정 4단 탭 지원)"""
+    """다크 확장 팝업창 (최근 뉴스 / AI 활동 / 도감 & 엔딩 기록 / 설정 4단 탭 지원)"""
 
     def __init__(self, game_state, save_manager, parent=None):
         super().__init__(parent)
         self.game_state = game_state
         self.save_manager = save_manager
         self.setWindowTitle("AI 키우기 - 뉴스 / 도감 / 설정")
-        self.resize(780, 600)
-        self.setStyleSheet("QDialog { background-color: #ffffff; }")
+        apply_dark_titlebar(self, "#161b22")
+        self.resize(820, 620)
+        self.setStyleSheet("""
+            QDialog, QWidget {
+                background-color: #0d1117;
+                color: #e6edf3;
+                font-family: 'Pretendard', 'SUIT', 'Malgun Gothic', sans-serif;
+            }
+        """)
 
         self._auto_open_guard_until = 0.0
         self._top_card_anim: QPropertyAnimation | None = None
@@ -151,23 +183,33 @@ class NewsDialog(QDialog):
 
         header = QFrame()
         header.setFixedHeight(48)
-        header.setStyleSheet("background-color: #ffffff; border-bottom: 2px solid #1f2328;")
+        header.setStyleSheet("background-color: #161b22; border-bottom: 1px solid #30363d;")
         header_layout = QHBoxLayout(header)
-        header_layout.setContentsMargins(16, 0, 16, 0)
+        header_layout.setContentsMargins(18, 0, 18, 0)
 
         self.lbl_header_title = QLabel("NEWS")
-        self.lbl_header_title.setStyleSheet("background-color: transparent; font-size: 18px; font-weight: bold; color: #1f2328; border: none;")
+        self.lbl_header_title.setStyleSheet(
+            "background-color: transparent; font-size: 16px; font-weight: bold; color: #f0f6fc; border: none;"
+        )
         header_layout.addWidget(self.lbl_header_title)
         header_layout.addStretch()
 
         btn_close = QPushButton("닫기")
-        btn_close.setFixedSize(60, 28)
+        btn_close.setFixedSize(64, 28)
+        btn_close.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_close.setStyleSheet("""
             QPushButton {
-                background-color: #f6f8fa; border: 1px solid #d0d7de;
-                border-radius: 4px; font-weight: bold;
+                background-color: #21262d;
+                color: #e6edf3;
+                border: 1px solid #30363d;
+                border-radius: 4px;
+                font-weight: bold;
+                font-size: 12px;
             }
-            QPushButton:hover { background-color: #eaeef2; }
+            QPushButton:hover {
+                background-color: #30363d;
+                border-color: #58a6ff;
+            }
         """)
         btn_close.clicked.connect(self.close)
         header_layout.addWidget(btn_close)
@@ -178,12 +220,13 @@ class NewsDialog(QDialog):
         # [탭 0] 최근 뉴스
         self.news_scroll = QScrollArea()
         self.news_scroll.setWidgetResizable(True)
-        self.news_scroll.setStyleSheet("border: none; background-color: #ffffff;")
+        self.news_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.news_scroll.setStyleSheet(DARK_SCROLL_QSS)
         self.news_container = QWidget()
-        self.news_container.setStyleSheet("background-color: #ffffff;")
+        self.news_container.setStyleSheet("background-color: #0d1117;")
         self.news_list_layout = QVBoxLayout(self.news_container)
         self.news_list_layout.setContentsMargins(18, 16, 18, 16)
-        self.news_list_layout.setSpacing(14)
+        self.news_list_layout.setSpacing(12)
         self.news_list_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         self.news_scroll.setWidget(self.news_container)
         self.stack.addWidget(self.news_scroll)
@@ -191,12 +234,13 @@ class NewsDialog(QDialog):
         # [탭 1] AI 활동
         self.activity_scroll = QScrollArea()
         self.activity_scroll.setWidgetResizable(True)
-        self.activity_scroll.setStyleSheet("border: none; background-color: #ffffff;")
+        self.activity_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.activity_scroll.setStyleSheet(DARK_SCROLL_QSS)
         self.activity_container = QWidget()
-        self.activity_container.setStyleSheet("background-color: #ffffff;")
+        self.activity_container.setStyleSheet("background-color: #0d1117;")
         self.activity_layout = QVBoxLayout(self.activity_container)
         self.activity_layout.setContentsMargins(18, 16, 18, 16)
-        self.activity_layout.setSpacing(12)
+        self.activity_layout.setSpacing(10)
         self.activity_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         self.activity_scroll.setWidget(self.activity_container)
         self.stack.addWidget(self.activity_scroll)
@@ -204,12 +248,13 @@ class NewsDialog(QDialog):
         # [탭 2] 도감 & 엔딩 기록
         self.dex_scroll = QScrollArea()
         self.dex_scroll.setWidgetResizable(True)
-        self.dex_scroll.setStyleSheet("border: none; background-color: #ffffff;")
+        self.dex_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.dex_scroll.setStyleSheet(DARK_SCROLL_QSS)
         self.dex_container = QWidget()
-        self.dex_container.setStyleSheet("background-color: #ffffff;")
+        self.dex_container.setStyleSheet("background-color: #0d1117;")
         self.dex_layout = QVBoxLayout(self.dex_container)
         self.dex_layout.setContentsMargins(18, 16, 18, 16)
-        self.dex_layout.setSpacing(12)
+        self.dex_layout.setSpacing(10)
         self.dex_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         self.dex_scroll.setWidget(self.dex_container)
         self.stack.addWidget(self.dex_scroll)
@@ -217,7 +262,8 @@ class NewsDialog(QDialog):
         # [탭 3] 설정
         self.settings_scroll = QScrollArea()
         self.settings_scroll.setWidgetResizable(True)
-        self.settings_scroll.setStyleSheet("border: none; background-color: #ffffff;")
+        self.settings_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.settings_scroll.setStyleSheet(DARK_SCROLL_QSS)
         self.settings_container = self._build_settings_tab()
         self.settings_scroll.setWidget(self.settings_container)
         self.stack.addWidget(self.settings_scroll)
@@ -225,8 +271,8 @@ class NewsDialog(QDialog):
         main_layout.addWidget(self.stack, stretch=1)
 
         bottom_bar = QFrame()
-        bottom_bar.setFixedHeight(46)
-        bottom_bar.setStyleSheet("background-color: #ffffff; border-top: 2px solid #1f2328;")
+        bottom_bar.setFixedHeight(44)
+        bottom_bar.setStyleSheet("background-color: #161b22; border-top: 1px solid #30363d;")
         bottom_layout = QHBoxLayout(bottom_bar)
         bottom_layout.setContentsMargins(0, 0, 0, 0)
         bottom_layout.setSpacing(0)
@@ -235,8 +281,8 @@ class NewsDialog(QDialog):
         tab_names = ["최근 뉴스", "AI 활동", "도감", "설정"]
         for idx, name in enumerate(tab_names):
             btn = QPushButton(name)
-            btn.setFixedHeight(44)
-            btn.setFixedWidth(120)
+            btn.setFixedHeight(43)
+            btn.setFixedWidth(130)
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
             btn.clicked.connect(lambda checked, i=idx: self._switch_tab(i))
             self.tab_buttons.append(btn)
@@ -249,7 +295,7 @@ class NewsDialog(QDialog):
 
     def _build_settings_tab(self) -> QWidget:
         container = QWidget()
-        container.setStyleSheet("background-color: #ffffff;")
+        container.setStyleSheet("background-color: #0d1117;")
         layout = QVBoxLayout(container)
         layout.setContentsMargins(18, 16, 18, 20)
         layout.setSpacing(14)
@@ -257,30 +303,30 @@ class NewsDialog(QDialog):
 
         card_style = """
             QFrame {
-                background-color: #f6f8fa;
-                border: 1px solid #d0d7de;
+                background-color: #161b22;
+                border: 1px solid #30363d;
                 border-radius: 6px;
                 padding: 12px;
             }
         """
         btn_primary_style = """
             QPushButton {
-                background-color: #0969da; color: #ffffff;
-                border: none; border-radius: 4px;
+                background-color: #1f6feb; color: #ffffff;
+                border: 1px solid #388bfd; border-radius: 4px;
                 padding: 6px 12px; font-weight: bold; font-size: 12px;
             }
-            QPushButton:hover { background-color: #0860ca; }
+            QPushButton:hover { background-color: #388bfd; }
             QPushButton:disabled {
-                background-color: #d0d7de; color: #8c959f;
+                background-color: #21262d; color: #484f58; border-color: #30363d;
             }
         """
         btn_normal_style = """
             QPushButton {
-                background-color: #ffffff; color: #1f2328;
-                border: 1px solid #d0d7de; border-radius: 4px;
+                background-color: #21262d; color: #e6edf3;
+                border: 1px solid #30363d; border-radius: 4px;
                 padding: 6px 12px; font-weight: bold; font-size: 12px;
             }
-            QPushButton:hover { background-color: #eaeef2; }
+            QPushButton:hover { background-color: #30363d; border-color: #8b949e; }
         """
 
         # 1. 자동 저장 및 백업 관리
@@ -290,17 +336,20 @@ class NewsDialog(QDialog):
         auto_layout.setSpacing(8)
 
         lbl_auto_title = QLabel("1. 데이터 영속성 및 자동 백업 관리")
-        lbl_auto_title.setStyleSheet("background-color: transparent; font-size: 14px; font-weight: bold; border: none;")
+        lbl_auto_title.setStyleSheet("background-color: transparent; font-size: 14px; font-weight: bold; color: #f0f6fc; border: none;")
         self.lbl_save_status = QLabel("상태: 30초마다 자동 저장 및 직전 백업본(.bak) 생성 활성")
-        self.lbl_save_status.setStyleSheet("background-color: transparent; font-size: 12px; color: #424a53; border: none;")
+        self.lbl_save_status.setWordWrap(True)
+        self.lbl_save_status.setStyleSheet("background-color: transparent; font-size: 12px; color: #8b949e; border: none;")
 
         auto_btn_row = QHBoxLayout()
         btn_manual_save = QPushButton("지금 즉시 저장 및 백업")
         btn_manual_save.setStyleSheet(btn_primary_style)
+        btn_manual_save.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_manual_save.clicked.connect(self._on_manual_save)
 
         btn_change_dir = QPushButton("저장 경로 변경")
         btn_change_dir.setStyleSheet(btn_normal_style)
+        btn_change_dir.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_change_dir.clicked.connect(self._on_change_save_dir)
 
         auto_btn_row.addWidget(btn_manual_save)
@@ -312,14 +361,14 @@ class NewsDialog(QDialog):
         auto_layout.addLayout(auto_btn_row)
         layout.addWidget(sec_auto)
 
-        # 2. 분기 저장 슬롯 (진행도 미리보기 카드 지원)
+        # 2. 분기 저장 슬롯 (다크 진행도 미리보기 카드)
         sec_branch = QFrame()
         sec_branch.setStyleSheet(card_style)
         branch_layout = QVBoxLayout(sec_branch)
         branch_layout.setSpacing(10)
 
         lbl_branch_title = QLabel("2. 분기 저장 슬롯 (엔딩 분기 되돌리기용 체크포인트)")
-        lbl_branch_title.setStyleSheet("background-color: transparent; font-size: 14px; font-weight: bold; border: none;")
+        lbl_branch_title.setStyleSheet("background-color: transparent; font-size: 14px; font-weight: bold; color: #f0f6fc; border: none;")
         branch_layout.addWidget(lbl_branch_title)
 
         self.branch_slot_widgets = {}
@@ -327,8 +376,8 @@ class NewsDialog(QDialog):
             slot_card = QFrame()
             slot_card.setStyleSheet("""
                 QFrame {
-                    background-color: #ffffff;
-                    border: 1px solid #d0d7de;
+                    background-color: #0d1117;
+                    border: 1px solid #30363d;
                     border-radius: 5px;
                     padding: 8px 10px;
                 }
@@ -341,13 +390,19 @@ class NewsDialog(QDialog):
             info_col.setSpacing(3)
 
             lbl_slot_title = QLabel(f"슬롯 {slot} · 비어 있는 슬롯")
+            lbl_slot_title.setWordWrap(True)
             lbl_slot_title.setStyleSheet(
-                "background-color: transparent; font-size: 13px; font-weight: bold; color: #1f2328; border: none;"
+                "background-color: transparent; font-size: 13px; font-weight: bold; color: #8b949e; border: none;"
             )
             lbl_slot_sub = QLabel("저장된 데이터가 없습니다.")
-            lbl_slot_sub.setStyleSheet(
-                "background-color: transparent; font-size: 11px; color: #57606a; border: none;"
-            )
+            lbl_slot_sub.setWordWrap(True)
+            lbl_slot_sub.setStyleSheet("""
+                background-color: transparent;
+                font-family: 'Consolas', 'D2Coding', monospace;
+                font-size: 11px;
+                color: #8b949e;
+                border: none;
+            """)
 
             info_col.addWidget(lbl_slot_title)
             info_col.addWidget(lbl_slot_sub)
@@ -383,7 +438,7 @@ class NewsDialog(QDialog):
         b64_layout.setSpacing(8)
 
         lbl_b64_title = QLabel("3. Base64 세이브 코드 내보내기 / 불러오기")
-        lbl_b64_title.setStyleSheet("background-color: transparent; font-size: 14px; font-weight: bold; border: none;")
+        lbl_b64_title.setStyleSheet("background-color: transparent; font-size: 14px; font-weight: bold; color: #f0f6fc; border: none;")
         b64_layout.addWidget(lbl_b64_title)
 
         self.txt_b64 = QTextEdit()
@@ -391,10 +446,11 @@ class NewsDialog(QDialog):
         self.txt_b64.setPlaceholderText("이곳에 Base64 세이브 코드가 생성되거나, 불러올 코드를 붙여넣으세요.")
         self.txt_b64.setStyleSheet("""
             QTextEdit {
-                background-color: #ffffff;
-                border: 1px solid #d0d7de;
+                background-color: #0d1117;
+                color: #c9d1d9;
+                border: 1px solid #30363d;
                 border-radius: 4px;
-                font-family: Consolas, monospace;
+                font-family: 'Consolas', 'D2Coding', monospace;
                 font-size: 11px;
                 padding: 4px;
             }
@@ -404,10 +460,12 @@ class NewsDialog(QDialog):
         b64_btn_row = QHBoxLayout()
         btn_export_b64 = QPushButton("현재 데이터 코드 생성 및 복사")
         btn_export_b64.setStyleSheet(btn_normal_style)
+        btn_export_b64.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_export_b64.clicked.connect(self._on_export_base64)
 
         btn_import_b64 = QPushButton("입력된 코드로 데이터 복원")
         btn_import_b64.setStyleSheet(btn_primary_style)
+        btn_import_b64.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_import_b64.clicked.connect(self._on_import_base64)
 
         b64_btn_row.addWidget(btn_export_b64)
@@ -421,8 +479,8 @@ class NewsDialog(QDialog):
         sec_debug = QFrame()
         sec_debug.setStyleSheet("""
             QFrame {
-                background-color: #fbefff;
-                border: 1px solid #8250df;
+                background-color: #241833;
+                border: 1px solid #8957e5;
                 border-radius: 6px;
                 padding: 12px;
             }
@@ -431,10 +489,10 @@ class NewsDialog(QDialog):
         debug_layout.setSpacing(8)
 
         lbl_debug_title = QLabel("4. [DEBUG] 명령어 입력 난이도 단계 강제 설정 (Tier 1 ~ 4)")
-        lbl_debug_title.setStyleSheet("background-color: transparent; font-size: 14px; font-weight: bold; color: #6639ba; border: none;")
+        lbl_debug_title.setStyleSheet("background-color: transparent; font-size: 14px; font-weight: bold; color: #d2a8ff; border: none;")
 
         self.lbl_debug_tier_desc = QLabel("현재 적용 단계: Tier 1 (초기 복잡한 파이썬 코드)")
-        self.lbl_debug_tier_desc.setStyleSheet("background-color: transparent; font-size: 12px; color: #424a53; border: none;")
+        self.lbl_debug_tier_desc.setStyleSheet("background-color: transparent; font-size: 12px; color: #c9d1d9; border: none;")
 
         tier_btn_row = QHBoxLayout()
         tier_btn_row.setSpacing(8)
@@ -462,24 +520,25 @@ class NewsDialog(QDialog):
         sec_reset = QFrame()
         sec_reset.setStyleSheet("""
             QFrame {
-                background-color: #ffebe9;
-                border: 1px solid #ff8182;
+                background-color: #2c1619;
+                border: 1px solid #f85149;
                 border-radius: 6px;
                 padding: 12px;
             }
         """)
         reset_layout = QHBoxLayout(sec_reset)
         lbl_reset = QLabel("게임 진행 데이터 전체 초기화 (달성한 엔딩 컬렉션은 유지)")
-        lbl_reset.setStyleSheet("background-color: transparent; font-size: 13px; font-weight: bold; color: #cf222e; border: none;")
+        lbl_reset.setStyleSheet("background-color: transparent; font-size: 13px; font-weight: bold; color: #ffa198; border: none;")
 
         btn_reset = QPushButton("데이터 초기화")
+        btn_reset.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_reset.setStyleSheet("""
             QPushButton {
-                background-color: #cf222e; color: #ffffff;
-                border: none; border-radius: 4px;
+                background-color: #da3633; color: #ffffff;
+                border: 1px solid #f85149; border-radius: 4px;
                 padding: 6px 14px; font-weight: bold; font-size: 12px;
             }
-            QPushButton:hover { background-color: #a40e26; }
+            QPushButton:hover { background-color: #f85149; }
         """)
         btn_reset.clicked.connect(self._on_reset_game)
 
@@ -491,7 +550,6 @@ class NewsDialog(QDialog):
         return container
 
     def _get_branch_save_path(self, slot: int) -> str:
-        """save_manager에서 분기 슬롯 파일 경로를 안전하게 조회"""
         if hasattr(self.save_manager, "get_branch_path"):
             return self.save_manager.get_branch_path(slot)
         if hasattr(self.save_manager, "_branch_path"):
@@ -624,25 +682,29 @@ class NewsDialog(QDialog):
             if i == index:
                 btn.setStyleSheet("""
                     QPushButton {
-                        background-color: #eaeef2;
+                        background-color: #0d1117;
                         border: none;
-                        border-right: 2px solid #1f2328;
-                        font-size: 14px;
+                        border-top: 2px solid #58a6ff;
+                        border-right: 1px solid #30363d;
+                        font-size: 13px;
                         font-weight: bold;
-                        color: #0969da;
+                        color: #58a6ff;
                     }
                 """)
             else:
                 btn.setStyleSheet("""
                     QPushButton {
-                        background-color: #ffffff;
+                        background-color: #161b22;
                         border: none;
-                        border-right: 2px solid #1f2328;
-                        font-size: 14px;
+                        border-right: 1px solid #30363d;
+                        font-size: 13px;
                         font-weight: bold;
-                        color: #1f2328;
+                        color: #8b949e;
                     }
-                    QPushButton:hover { background-color: #f6f8fa; }
+                    QPushButton:hover {
+                        background-color: #21262d;
+                        color: #e6edf3;
+                    }
                 """)
         self.refresh_all()
 
@@ -664,32 +726,46 @@ class NewsDialog(QDialog):
             if preview["exists"]:
                 widgets["card"].setStyleSheet("""
                     QFrame {
-                        background-color: #ddf4ff;
-                        border: 1px solid #54aeff;
+                        background-color: #13233a;
+                        border: 1px solid #388bfd;
                         border-radius: 5px;
                         padding: 8px 10px;
                     }
                 """)
                 widgets["title"].setText(f"슬롯 {slot} · {preview['title']}")
                 widgets["title"].setStyleSheet(
-                    "background-color: transparent; font-size: 13px; font-weight: bold; color: #0969da; border: none;"
+                    "background-color: transparent; font-size: 13px; font-weight: bold; color: #79c0ff; border: none;"
                 )
                 widgets["sub"].setText(preview["subtitle"])
+                widgets["sub"].setStyleSheet("""
+                    background-color: transparent;
+                    font-family: 'Consolas', 'D2Coding', monospace;
+                    font-size: 11px;
+                    color: #c9d1d9;
+                    border: none;
+                """)
                 widgets["load_btn"].setEnabled(True)
             else:
                 widgets["card"].setStyleSheet("""
                     QFrame {
-                        background-color: #ffffff;
-                        border: 1px solid #d0d7de;
+                        background-color: #0d1117;
+                        border: 1px solid #30363d;
                         border-radius: 5px;
                         padding: 8px 10px;
                     }
                 """)
                 widgets["title"].setText(f"슬롯 {slot} · {preview['title']}")
                 widgets["title"].setStyleSheet(
-                    "background-color: transparent; font-size: 13px; font-weight: bold; color: #6e7781; border: none;"
+                    "background-color: transparent; font-size: 13px; font-weight: bold; color: #8b949e; border: none;"
                 )
                 widgets["sub"].setText(preview["subtitle"])
+                widgets["sub"].setStyleSheet("""
+                    background-color: transparent;
+                    font-family: 'Consolas', 'D2Coding', monospace;
+                    font-size: 11px;
+                    color: #6e7681;
+                    border: none;
+                """)
                 widgets["load_btn"].setEnabled(False)
 
         current_tier = getattr(self.game_state, "command_tier", 1)
@@ -706,19 +782,19 @@ class NewsDialog(QDialog):
             if t_num == current_tier:
                 btn.setStyleSheet("""
                     QPushButton {
-                        background-color: #8250df; color: #ffffff;
-                        border: none; border-radius: 4px;
+                        background-color: #8957e5; color: #ffffff;
+                        border: 1px solid #d2a8ff; border-radius: 4px;
                         padding: 6px 12px; font-weight: bold; font-size: 12px;
                     }
                 """)
             else:
                 btn.setStyleSheet("""
                     QPushButton {
-                        background-color: #ffffff; color: #1f2328;
-                        border: 1px solid #d0d7de; border-radius: 4px;
+                        background-color: #161b22; color: #c9d1d9;
+                        border: 1px solid #30363d; border-radius: 4px;
                         padding: 6px 12px; font-weight: bold; font-size: 12px;
                     }
-                    QPushButton:hover { background-color: #eaeef2; }
+                    QPushButton:hover { background-color: #21262d; }
                 """)
 
     def _clear_layout(self, layout):
@@ -734,7 +810,7 @@ class NewsDialog(QDialog):
             lbl_no_news.setAlignment(Qt.AlignmentFlag.AlignCenter)
             lbl_no_news.setStyleSheet("""
                 background-color: transparent;
-                color: #6e7781;
+                color: #8b949e;
                 font-size: 13px;
                 padding: 40px 0px;
                 border: none;
@@ -753,33 +829,102 @@ class NewsDialog(QDialog):
             is_active = (act["status"] == "가동 중")
             box.setStyleSheet(f"""
                 QFrame {{
-                    background-color: {'#dafbe1' if is_active else '#f6f8fa'};
-                    border: 1px solid {'#2da44e' if is_active else '#d0d7de'};
+                    background-color: {'#12261e' if is_active else '#161b22'};
+                    border: 1px solid {'#2ea043' if is_active else '#30363d'};
                     border-radius: 6px;
-                    padding: 10px;
+                    padding: 10px 12px;
                 }}
             """)
             row = QHBoxLayout(box)
             lbl_name = QLabel(f"● {act['name']}")
-            lbl_name.setStyleSheet("background-color: transparent; font-weight: bold; font-size: 14px; border: none;")
+            lbl_name.setStyleSheet(f"""
+                background-color: transparent;
+                font-weight: bold;
+                font-size: 13.5px;
+                color: {'#e6edf3' if is_active else '#8b949e'};
+                border: none;
+            """)
             lbl_rate = QLabel(f"[{act['status']}] {act['rate']}")
-            lbl_rate.setStyleSheet("background-color: transparent; font-weight: bold; font-size: 13px; color: #0969da; border: none;")
+            lbl_rate.setStyleSheet(f"""
+                background-color: transparent;
+                font-family: 'Consolas', 'D2Coding', monospace;
+                font-weight: bold;
+                font-size: 12.5px;
+                color: {'#7ee787' if is_active else '#6e7681'};
+                border: none;
+            """)
             row.addWidget(lbl_name)
             row.addStretch()
             row.addWidget(lbl_rate)
             self.activity_layout.addWidget(box)
 
-        # 도감 & 영구 엔딩 컬렉션 표시
+        # 도감 & 영구 엔딩 컬렉션 표시 (총 21종 통합 게이지 포함)
         self._clear_layout(self.dex_layout)
 
+        endings_unlocked = self.game_state.unlocked_endings & self.game_state.VALID_ENDING_IDS
+        story_unlocked_cnt = sum(1 for d in self.game_state.encyclopedia if d["unlocked"])
+        story_total_cnt = len(self.game_state.encyclopedia)
+        endings_total_cnt = len(self.game_state.ENDINGS_CATALOG)
+
+        all_unlocked = story_unlocked_cnt + len(endings_unlocked)
+        all_total = story_total_cnt + endings_total_cnt
+        pct = int((all_unlocked / all_total) * 100) if all_total > 0 else 0
+
+        # 통합 달성률 게이지 카드
+        gauge_card = QFrame()
+        gauge_card.setStyleSheet("""
+            QFrame {
+                background-color: #161b22;
+                border: 1px solid #30363d;
+                border-radius: 6px;
+                padding: 10px 14px;
+            }
+        """)
+        g_vbox = QVBoxLayout(gauge_card)
+        g_vbox.setSpacing(6)
+        g_row = QHBoxLayout()
+        lbl_g_title = QLabel("전체 도감 달성률 (엔딩 컬렉션 + 연대기 기록)")
+        lbl_g_title.setStyleSheet("background-color: transparent; font-size: 13px; font-weight: bold; color: #d2a8ff; border: none;")
+        lbl_g_val = QLabel(f"{all_unlocked} / {all_total} ({pct}%)")
+        lbl_g_val.setStyleSheet("""
+            background-color: transparent;
+            font-family: 'Consolas', 'D2Coding', monospace;
+            font-size: 13px; font-weight: bold; color: #79c0ff; border: none;
+        """)
+        g_row.addWidget(lbl_g_title)
+        g_row.addStretch()
+        g_row.addWidget(lbl_g_val)
+        g_vbox.addLayout(g_row)
+
+        pbar = QProgressBar()
+        pbar.setRange(0, all_total)
+        pbar.setValue(all_unlocked)
+        pbar.setTextVisible(False)
+        pbar.setFixedHeight(10)
+        pbar.setStyleSheet("""
+            QProgressBar {
+                background-color: #21262d;
+                border: 1px solid #30363d;
+                border-radius: 5px;
+            }
+            QProgressBar::chunk {
+                border-radius: 4px;
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #388bfd, stop:1 #bc8cff);
+            }
+        """)
+        g_vbox.addWidget(pbar)
+        self.dex_layout.addWidget(gauge_card)
+
         # 1. 엔딩 컬렉션 섹션
-        endings_unlocked = self.game_state.unlocked_endings
         basic_count = self.game_state.get_basic_ending_count()
         lbl_end_header = QLabel(
             f"엔딩 컬렉션: {basic_count} / 4 달성"
             + (" (★ ENDING S 해금됨)" if self.game_state.has_all_four_endings() else " (ENDING A~D 모두 달성 시 숨겨진 분기 출현)")
         )
-        lbl_end_header.setStyleSheet("background-color: transparent; font-size: 13px; font-weight: bold; color: #8250df; margin-bottom: 4px;")
+        lbl_end_header.setWordWrap(True)
+        lbl_end_header.setStyleSheet(
+            "background-color: transparent; font-size: 12.5px; font-weight: bold; color: #bc8cff; margin-top: 6px;"
+        )
         self.dex_layout.addWidget(lbl_end_header)
 
         for end_info in self.game_state.ENDINGS_CATALOG:
@@ -789,11 +934,13 @@ class NewsDialog(QDialog):
 
             card = QFrame()
             if is_done:
-                bg = "#fbefff" if is_hidden else "#dafbe1"
-                bd = "#8250df" if is_hidden else "#2da44e"
+                bg = "#241833" if is_hidden else "#12261e"
+                bd = "#a371f7" if is_hidden else "#2ea043"
+                tc = "#e2c5ff" if is_hidden else "#7ee787"
             else:
-                bg = "#eaeef2"
-                bd = "#afb8c1"
+                bg = "#161b22"
+                bd = "#30363d"
+                tc = "#8b949e"
 
             card.setStyleSheet(f"""
                 QFrame {{
@@ -809,19 +956,20 @@ class NewsDialog(QDialog):
             desc_txt = f"경로: {end_info['route']} — {end_info['summary']}" if is_done else "특이점 도달 후 선택지 분기를 통해 확인할 수 있습니다."
 
             lbl_t = QLabel(title_txt)
-            lbl_t.setStyleSheet("background-color: transparent; font-weight: bold; font-size: 13px; border: none;")
+            lbl_t.setWordWrap(True)
+            lbl_t.setStyleSheet(f"background-color: transparent; font-weight: bold; font-size: 13px; color: {tc}; border: none;")
             lbl_d = QLabel(desc_txt)
-            lbl_d.setStyleSheet("background-color: transparent; font-size: 12px; color: #424a53; border: none;")
+            lbl_d.setWordWrap(True)
+            lbl_d.setStyleSheet("background-color: transparent; font-size: 12px; color: #8b949e; border: none;")
             v.addWidget(lbl_t)
             v.addWidget(lbl_d)
             self.dex_layout.addWidget(card)
 
         # 2. 수집 도감 섹션
-        unlocked_cnt = sum(1 for d in self.game_state.encyclopedia if d["unlocked"])
-        total_cnt = len(self.game_state.encyclopedia)
-
-        lbl_progress = QLabel(f"수집 도감: {unlocked_cnt} / {total_cnt} ({int(unlocked_cnt / total_cnt * 100)}%)")
-        lbl_progress.setStyleSheet("background-color: transparent; font-size: 13px; font-weight: bold; color: #0969da; margin-top: 10px; margin-bottom: 4px;")
+        lbl_progress = QLabel(f"연대기 도감: {story_unlocked_cnt} / {story_total_cnt}")
+        lbl_progress.setStyleSheet(
+            "background-color: transparent; font-size: 12.5px; font-weight: bold; color: #58a6ff; margin-top: 8px;"
+        )
         self.dex_layout.addWidget(lbl_progress)
 
         for item in self.game_state.encyclopedia:
@@ -829,20 +977,29 @@ class NewsDialog(QDialog):
             unlocked = item["unlocked"]
             card.setStyleSheet(f"""
                 QFrame {{
-                    background-color: {'#ddf4ff' if unlocked else '#eaeef2'};
-                    border: 1px solid {'#0969da' if unlocked else '#afb8c1'};
+                    background-color: {'#13233a' if unlocked else '#161b22'};
+                    border: 1px solid {'#388bfd' if unlocked else '#30363d'};
                     border-radius: 6px;
-                    padding: 10px;
+                    padding: 8px 10px;
                 }}
             """)
             v_layout = QVBoxLayout(card)
+            v_layout.setSpacing(3)
             title_text = f"★ {item['name']}" if unlocked else "🔒 ??? (미해금 수집 요소)"
             desc_text = item["desc"] if unlocked else "게임을 진행하며 특정 조건을 달성하면 해금됩니다."
 
             lbl_t = QLabel(title_text)
-            lbl_t.setStyleSheet("background-color: transparent; font-weight: bold; font-size: 14px; border: none;")
+            lbl_t.setWordWrap(True)
+            lbl_t.setStyleSheet(
+                f"background-color: transparent; font-weight: bold; font-size: 13px; color: {'#79c0ff' if unlocked else '#8b949e'}; border: none;"
+            )
             lbl_d = QLabel(desc_text)
-            lbl_d.setStyleSheet("background-color: transparent; font-size: 12px; color: #424a53; border: none;")
+            lbl_d.setWordWrap(True)
+            lbl_d.setStyleSheet(
+                "background-color: transparent; font-size: 12px; color: #c9d1d9; border: none;"
+                if unlocked else
+                "background-color: transparent; font-size: 12px; color: #6e7681; border: none;"
+            )
 
             v_layout.addWidget(lbl_t)
             v_layout.addWidget(lbl_d)

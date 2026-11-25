@@ -1,5 +1,5 @@
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QScrollArea, QPushButton, QLabel, QFrame
+    QWidget, QVBoxLayout, QHBoxLayout, QScrollArea, QPushButton, QLabel, QFrame
 )
 from PyQt6.QtCore import Qt, QPoint
 from PyQt6.QtGui import QPainter, QPen, QColor, QFont
@@ -7,7 +7,7 @@ from core.number_format import format_number
 
 
 class TreeCanvas(QWidget):
-    """노드 간 직교 연결선과 챕터 구분선(미도달 시 정보 비공개)을 그리는 트리 캔버스"""
+    """다크 회로도(도트 격자 + 직교 연결선 + 챕터 구분선) 기반 업그레이드 트리 캔버스"""
 
     CHAPTER_TITLES = {
         0: "TUTORIAL · 개발 환경 초기화",
@@ -21,12 +21,12 @@ class TreeCanvas(QWidget):
         8: "CHAPTER 8 · 특이점 (SINGULARITY)"
     }
 
-    # 노드 타입별 색상 팔레트: (구매가능 배경색, 호버색, 구매가능 테두리색, 토큰부족 대기 테두리색)
+    # 다크 UI 전용 노드 타입별 색상: (구매가능 배경, 호버 배경, 구매가능 테두리, 대기 테두리)
     TYPE_COLORS = {
-        "active":  ("#cf222e", "#a40e26", "#82071e", "#ff8182"),  # 액티브(좌): 붉은색 계열
-        "passive": ("#1a7f37", "#116329", "#0a461c", "#4ac26b"),  # 패시브(우): 녹색 계열
-        "common":  ("#0969da", "#0860ca", "#0550ae", "#54aeff"),  # 공통/중립(중): 푸른색 계열
-        "story":   ("#8250df", "#6639ba", "#512a97", "#a371f7"),  # 스토리/마일스톤(중): 보라색 계열
+        "active":  ("#b62324", "#da3633", "#ff7b72", "#f85149"),  # 액티브(좌): 코랄 레드
+        "passive": ("#196c2e", "#238636", "#56d364", "#3fb950"),  # 패시브(우): 에메랄드 그린
+        "common":  ("#1158c7", "#1f6feb", "#79c0ff", "#58a6ff"),  # 공통/중립(중): 일렉트릭 블루
+        "story":   ("#6e40c9", "#8957e5", "#d2a8ff", "#bc8cff"),  # 스토리/마일스톤: 네온 라벤더
     }
 
     def __init__(self, game_state, parent=None):
@@ -36,9 +36,10 @@ class TreeCanvas(QWidget):
         self.node_centers: dict[str, QPoint] = {}
         self.chapter_rows: dict[int, int] = {}
 
-        self.row_height = 104
-        self.top_margin = 34
-        self.setMinimumWidth(300)
+        self.row_height = 108
+        self.top_margin = 36
+        self.setMinimumWidth(330)
+        self.setStyleSheet("background-color: #0d1117;")
         self._build_nodes()
 
     def _build_nodes(self):
@@ -57,7 +58,7 @@ class TreeCanvas(QWidget):
                 self.chapter_rows[chap] = row
 
             btn = QPushButton(self)
-            btn.setFixedSize(92, 62)
+            btn.setFixedSize(102, 64)
             btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
             uid = upg["id"]
@@ -77,11 +78,11 @@ class TreeCanvas(QWidget):
         self._reposition_nodes()
 
     def _reposition_nodes(self):
-        w = max(self.width(), 300)
+        w = max(self.width(), 330)
         col_x = {
-            1: int(w * 0.22),
+            1: int(w * 0.20),
             2: int(w * 0.50),
-            3: int(w * 0.78),
+            3: int(w * 0.80),
         }
 
         self.node_centers.clear()
@@ -115,7 +116,6 @@ class TreeCanvas(QWidget):
                 self.TYPE_COLORS["common"]
             )
 
-            # 트리 전체 구조가 항상 다 보이도록 모든 노드를 표시
             btn.setVisible(True)
 
             if purchased:
@@ -124,16 +124,26 @@ class TreeCanvas(QWidget):
                     btn.setText(f"★ {upg['name']}\n[완료]")
                     btn.setStyleSheet("""
                         QPushButton {
-                            background-color: #fbefff; border: 2px solid #8250df;
-                            border-radius: 6px; color: #512a97; font-size: 10px; font-weight: bold;
+                            background-color: #241833;
+                            border: 1.5px solid #a371f7;
+                            border-radius: 6px;
+                            color: #e2c5ff;
+                            font-size: 10px;
+                            font-weight: bold;
+                            padding: 2px 4px;
                         }
                     """)
                 else:
                     btn.setText(f"{upg['name']}\n[완료]")
                     btn.setStyleSheet("""
                         QPushButton {
-                            background-color: #dafbe1; border: 2px solid #2da44e;
-                            border-radius: 6px; color: #1a7f37; font-size: 10px; font-weight: bold;
+                            background-color: #12261e;
+                            border: 1.5px solid #2ea043;
+                            border-radius: 6px;
+                            color: #7ee787;
+                            font-size: 10px;
+                            font-weight: bold;
+                            padding: 2px 4px;
                         }
                     """)
                 btn.setToolTip(
@@ -143,7 +153,6 @@ class TreeCanvas(QWidget):
                 )
             elif unlocked:
                 btn.setEnabled(True)
-
                 cost_str = format_number(upg["cost"])
                 if is_story:
                     ev_num = upg.get("story_event", {}).get("number", "")
@@ -155,16 +164,33 @@ class TreeCanvas(QWidget):
                 if affordable:
                     btn.setStyleSheet(f"""
                         QPushButton {{
-                            background-color: {bg_c}; border: 2px solid {border_c};
-                            border-radius: 6px; color: #ffffff; font-size: 10px; font-weight: bold;
+                            background-color: {bg_c};
+                            border: 2px solid {border_c};
+                            border-radius: 6px;
+                            color: #ffffff;
+                            font-size: 10px;
+                            font-weight: bold;
+                            padding: 2px 4px;
                         }}
-                        QPushButton:hover {{ background-color: {hover_c}; }}
+                        QPushButton:hover {{
+                            background-color: {hover_c};
+                            border: 2px solid #ffffff;
+                        }}
                     """)
                 else:
+                    wait_text = "#d2a8ff" if is_story else "#e6edf3"
                     btn.setStyleSheet(f"""
                         QPushButton {{
-                            background-color: #ffffff; border: 2px solid {wait_border};
-                            border-radius: 6px; color: #24292f; font-size: 10px; font-weight: bold;
+                            background-color: #161b22;
+                            border: 1.5px solid {wait_border};
+                            border-radius: 6px;
+                            color: {wait_text};
+                            font-size: 10px;
+                            font-weight: bold;
+                            padding: 2px 4px;
+                        }}
+                        QPushButton:hover {{
+                            background-color: #21262d;
                         }}
                     """)
                 btn.setToolTip(
@@ -173,13 +199,15 @@ class TreeCanvas(QWidget):
                     f"효과: {upg['desc']}"
                 )
             else:
-                # 아직 열리지 않은 노드는 ??? (잠김)으로 표시하되 전체 구조 윤곽은 모두 노출
                 btn.setEnabled(False)
                 btn.setText("???\n(잠김)")
                 btn.setStyleSheet("""
                     QPushButton {
-                        background-color: #eaeef2; border: 1px dashed #afb8c1;
-                        border-radius: 6px; color: #6e7781; font-size: 10px;
+                        background-color: #0d1117;
+                        border: 1px dashed #30363d;
+                        border-radius: 6px;
+                        color: #484f58;
+                        font-size: 10px;
                     }
                 """)
                 btn.setToolTip("이전 단계 업그레이드를 완료하면 해금됩니다.")
@@ -191,29 +219,40 @@ class TreeCanvas(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
-        # 도달(해금 또는 구매)한 챕터 판별: 도달하기 전까지는 챕터 제목 숨김
+        # 0. 다크 배경 및 미세 도트 격자 패턴 (16px 간격)
+        painter.fillRect(self.rect(), QColor("#0d1117"))
+        dot_pen = QPen(QColor("#21262d"), 1.5)
+        painter.setPen(dot_pen)
+        rect = event.rect()
+        start_x = (rect.left() // 16) * 16
+        start_y = (rect.top() // 16) * 16
+        for x in range(start_x, rect.right() + 1, 16):
+            for y in range(start_y, rect.bottom() + 1, 16):
+                painter.drawPoint(x, y)
+
+        # 도달(해금 또는 구매)한 챕터 판별
         reached_chapters = set()
         for upg in self.game_state.upgrades:
             uid = upg["id"]
             if upg["purchased"] or self.game_state.can_unlock(uid):
                 reached_chapters.add(int(upg.get("chapter", 1)))
 
-        # 1. 모든 챕터 구분선은 표시하되, 챕터 정보 텍스트는 도달한 챕터만 표시
+        # 1. 챕터 구분선 및 도달 챕터 제목
         header_font = QFont("Malgun Gothic", 8, QFont.Weight.Bold)
         painter.setFont(header_font)
         for chap in sorted(self.chapter_rows.keys()):
             start_row = self.chapter_rows[chap]
             y_line = self.top_margin + (start_row - 1) * self.row_height - 10
 
-            painter.setPen(QPen(QColor("#d0d7de"), 1, Qt.PenStyle.DashLine))
+            painter.setPen(QPen(QColor("#30363d"), 1, Qt.PenStyle.DashLine))
             painter.drawLine(10, y_line, self.width() - 10, y_line)
 
             if chap in reached_chapters:
-                painter.setPen(QPen(QColor("#57606a")))
+                painter.setPen(QPen(QColor("#8b949e")))
                 title = self.CHAPTER_TITLES.get(chap, f"CHAPTER {chap}")
-                painter.drawText(14, y_line + 13, title)
+                painter.drawText(14, y_line + 14, title)
 
-        # 2. 트리 전체의 직교 연결선을 모두 렌더링
+        # 2. 트리 전체 직교 연결선 렌더링
         for upg in self.game_state.upgrades:
             uid = upg["id"]
             p_end = self.node_centers.get(uid)
@@ -227,11 +266,11 @@ class TreeCanvas(QWidget):
                     continue
 
                 if req_node["purchased"] and upg["purchased"]:
-                    pen = QPen(QColor("#2da44e"), 2.5)
+                    pen = QPen(QColor("#3fb950"), 2.5)
                 elif req_node["purchased"]:
-                    pen = QPen(QColor("#0969da"), 2.0)
+                    pen = QPen(QColor("#58a6ff"), 2.0)
                 else:
-                    pen = QPen(QColor("#afb8c1"), 1.5, Qt.PenStyle.DashLine)
+                    pen = QPen(QColor("#21262d"), 1.5, Qt.PenStyle.DashLine)
 
                 painter.setPen(pen)
                 mid_y = (p_start.y() + p_end.y()) // 2
@@ -244,29 +283,77 @@ class UpgradeTreeWidget(QFrame):
     def __init__(self, game_state):
         super().__init__()
         self.game_state = game_state
-        self.setStyleSheet("UpgradeTreeWidget { background-color: #f6f8fa; border-left: 2px solid #d0d7de; }")
+        self.setStyleSheet("UpgradeTreeWidget { background-color: #0d1117; border-left: 1px solid #30363d; }")
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        header = QLabel("UPGRADE TREE")
-        header.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        header.setFixedHeight(50)
-        header.setStyleSheet("""
-            background-color: #ffffff;
-            border-bottom: 2px solid #d0d7de;
-            font-size: 16px;
+        # 상단 헤더 (타이틀 + 4색 범례)
+        header = QFrame()
+        header.setFixedHeight(58)
+        header.setStyleSheet("background-color: #161b22; border-bottom: 1px solid #30363d;")
+        header_vbox = QVBoxLayout(header)
+        header_vbox.setContentsMargins(8, 6, 8, 6)
+        header_vbox.setSpacing(3)
+
+        lbl_title = QLabel("UPGRADE TREE")
+        lbl_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        lbl_title.setStyleSheet("""
+            background-color: transparent;
+            font-size: 14px;
             font-weight: bold;
-            color: #1f2328;
+            letter-spacing: 1px;
+            color: #e6edf3;
+            border: none;
         """)
+        header_vbox.addWidget(lbl_title)
+
+        legend_row = QHBoxLayout()
+        legend_row.setContentsMargins(0, 0, 0, 0)
+        legend_row.setSpacing(10)
+        legend_row.addStretch()
+        for color, label_txt in (
+            ("#f85149", "액티브"),
+            ("#3fb950", "패시브"),
+            ("#58a6ff", "공통"),
+            ("#bc8cff", "스토리"),
+        ):
+            dot = QLabel()
+            dot.setFixedSize(7, 7)
+            dot.setStyleSheet(f"background-color: {color}; border-radius: 2px; border: none;")
+            lbl = QLabel(label_txt)
+            lbl.setStyleSheet("background-color: transparent; color: #8b949e; font-size: 10px; border: none;")
+            legend_row.addWidget(dot)
+            legend_row.addWidget(lbl)
+        legend_row.addStretch()
+        header_vbox.addLayout(legend_row)
+
         layout.addWidget(header)
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        scroll.setStyleSheet("border: none; background-color: #f6f8fa;")
+        scroll.setStyleSheet("""
+            QScrollArea {
+                border: none;
+                background-color: #0d1117;
+            }
+            QScrollBar:vertical {
+                background: #0d1117;
+                width: 6px;
+                margin: 0px;
+            }
+            QScrollBar::handle:vertical {
+                background: #30363d;
+                border-radius: 3px;
+                min-height: 24px;
+            }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                height: 0px;
+            }
+        """)
 
         self.canvas = TreeCanvas(self.game_state)
         scroll.setWidget(self.canvas)

@@ -1,6 +1,6 @@
 from PyQt6.QtWidgets import (
-    QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
-    QLabel, QFrame, QPushButton, QMessageBox, QFileDialog, QDialog, QInputDialog
+    QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QGridLayout,
+    QLabel, QFrame, QPushButton, QMessageBox, QFileDialog, QDialog, QLineEdit
 )
 from PyQt6.QtCore import Qt, QTimer, QPropertyAnimation, QParallelAnimationGroup, QPoint, QEasingCurve
 from PyQt6.QtGui import QFontMetrics
@@ -10,6 +10,7 @@ from core.number_format import format_number
 from ui.console_widget import VirtualConsoleWidget
 from ui.tree_widget import UpgradeTreeWidget
 from ui.news_dialog import NewsDialog
+from ui.window_style import apply_dark_titlebar
 
 
 class StoryEventDialog(QDialog):
@@ -18,8 +19,9 @@ class StoryEventDialog(QDialog):
     def __init__(self, story_data: dict, parent=None):
         super().__init__(parent)
         self.setWindowTitle(f"STORY EVENT #{story_data.get('number', '')} - {story_data.get('chapter', '')}")
+        apply_dark_titlebar(self, "#0d1117")
         self.setFixedSize(520, 310)
-        self.setStyleSheet("QDialog { background-color: #0d1117; border: 2px solid #8250df; }")
+        self.setStyleSheet("QDialog { background-color: #0d1117; border: 2px solid #bc8cff; }")
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(22, 18, 22, 18)
@@ -47,7 +49,7 @@ class StoryEventDialog(QDialog):
 
         lbl_title = QLabel(story_data.get("title", ""))
         lbl_title.setWordWrap(True)
-        lbl_title.setStyleSheet("color: #ffffff; font-size: 16px; font-weight: bold;")
+        lbl_title.setStyleSheet("color: #f0f6fc; font-size: 16px; font-weight: bold;")
         layout.addWidget(lbl_title)
 
         line = QFrame()
@@ -73,14 +75,173 @@ class StoryEventDialog(QDialog):
                 font-size: 13px;
                 font-weight: bold;
             }
-            QPushButton:hover { background-color: #6639ba; }
+            QPushButton:hover { background-color: #9a67ea; }
         """)
         btn_ok.clicked.connect(self.accept)
         layout.addWidget(btn_ok)
 
 
+class AiNamingDialog(QDialog):
+    """Chap 3 공개 베타 진입 시 AI 공식 명칭을 지정하는 다크 워크스테이션 전용 팝업"""
+
+    PRESETS = ["Aether", "Nexus", "Lumina", "Chronos", "Vortex"]
+
+    def __init__(self, current_name: str = "Proto-AI", parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("AI 공식 명칭 지정")
+        apply_dark_titlebar(self, "#0d1117")
+        self.setFixedSize(440, 245)
+        self.setStyleSheet("""
+            QDialog {
+                background-color: #0d1117;
+                border: 1.5px solid #388bfd;
+                font-family: 'Pretendard', 'Malgun Gothic', sans-serif;
+            }
+        """)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(22, 18, 22, 18)
+        layout.setSpacing(12)
+
+        lbl_badge = QLabel("◆ MODEL RELEASE · v0.9-beta")
+        lbl_badge.setStyleSheet(
+            "color: #58a6ff; font-family: 'Consolas', 'D2Coding', monospace; font-size: 11px; font-weight: bold;"
+        )
+        layout.addWidget(lbl_badge)
+
+        lbl_desc = QLabel(
+            "공개 베타 배포를 앞두고 AI의 공식 명칭을 지정하세요.\n"
+            "(미입력 시 기본 명칭 'Proto-AI'가 유지됩니다.)"
+        )
+        lbl_desc.setWordWrap(True)
+        lbl_desc.setStyleSheet("color: #c9d1d9; font-size: 12.5px; line-height: 1.4;")
+        layout.addWidget(lbl_desc)
+
+        # 터미널 스타일 입력 박스
+        input_frame = QFrame()
+        input_frame.setStyleSheet("""
+            QFrame {
+                background-color: #090c10;
+                border: 1.5px solid #30363d;
+                border-radius: 6px;
+            }
+            QFrame:focus-within {
+                border-color: #58a6ff;
+            }
+        """)
+        in_row = QHBoxLayout(input_frame)
+        in_row.setContentsMargins(10, 6, 10, 6)
+        in_row.setSpacing(6)
+
+        lbl_prompt = QLabel(">")
+        lbl_prompt.setStyleSheet(
+            "color: #3fb950; font-family: 'Consolas', 'D2Coding', monospace; font-size: 14px; font-weight: bold; border: none;"
+        )
+
+        self.input_edit = QLineEdit(current_name)
+        self.input_edit.setMaxLength(20)
+        self.input_edit.selectAll()
+        self.input_edit.setPlaceholderText("모델명 입력 (최대 20자)")
+        self.input_edit.setStyleSheet("""
+            QLineEdit {
+                background-color: transparent;
+                color: #f0f6fc;
+                border: none;
+                font-family: 'Pretendard', 'Consolas', sans-serif;
+                font-size: 14px;
+                font-weight: bold;
+                selection-background-color: #1f6feb;
+                selection-color: #ffffff;
+            }
+        """)
+        self.input_edit.returnPressed.connect(self.accept)
+
+        in_row.addWidget(lbl_prompt)
+        in_row.addWidget(self.input_edit, stretch=1)
+        layout.addWidget(input_frame)
+
+        # 추천 프리셋 칩 버튼
+        preset_row = QHBoxLayout()
+        preset_row.setSpacing(6)
+        lbl_pre = QLabel("추천:")
+        lbl_pre.setStyleSheet("color: #8b949e; font-size: 11px;")
+        preset_row.addWidget(lbl_pre)
+
+        for name in self.PRESETS:
+            btn = QPushButton(name)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #161b22;
+                    color: #8b949e;
+                    border: 1px solid #30363d;
+                    border-radius: 4px;
+                    padding: 3px 8px;
+                    font-size: 11px;
+                    font-weight: bold;
+                }
+                QPushButton:hover {
+                    background-color: #21262d;
+                    color: #79c0ff;
+                    border-color: #388bfd;
+                }
+            """)
+            btn.clicked.connect(lambda checked, n=name: self.input_edit.setText(n))
+            preset_row.addWidget(btn)
+        preset_row.addStretch()
+        layout.addLayout(preset_row)
+
+        layout.addStretch()
+
+        # 하단 확인 / 기본값 유지 버튼
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(8)
+        btn_row.addStretch()
+
+        btn_cancel = QPushButton("기본값 유지")
+        btn_cancel.setFixedHeight(32)
+        btn_cancel.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_cancel.setStyleSheet("""
+            QPushButton {
+                background-color: #21262d;
+                color: #c9d1d9;
+                border: 1px solid #30363d;
+                border-radius: 5px;
+                padding: 0px 14px;
+                font-size: 12px;
+                font-weight: bold;
+            }
+            QPushButton:hover { background-color: #30363d; }
+        """)
+        btn_cancel.clicked.connect(self.reject)
+
+        btn_ok = QPushButton("명칭 확정")
+        btn_ok.setFixedHeight(32)
+        btn_ok.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_ok.setStyleSheet("""
+            QPushButton {
+                background-color: #1f6feb;
+                color: #ffffff;
+                border: 1px solid #388bfd;
+                border-radius: 5px;
+                padding: 0px 16px;
+                font-size: 12px;
+                font-weight: bold;
+            }
+            QPushButton:hover { background-color: #388bfd; }
+        """)
+        btn_ok.clicked.connect(self.accept)
+
+        btn_row.addWidget(btn_cancel)
+        btn_row.addWidget(btn_ok)
+        layout.addLayout(btn_row)
+
+    def get_name(self) -> str:
+        return self.input_edit.text().strip()
+
+
 class MiniNewsTickerWidget(QWidget):
-    """튜토리얼 중에는 DEV GUIDE 카드를, 본편 진입 후에는 슬라이드 인 NEWS 카드를 표시하는 미니 패널"""
+    """튜토리얼 중에는 DEV GUIDE 카드를, 본편 진입 후에는 슬라이드 인 NEWS 카드를 표시하는 다크 미니 패널"""
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -89,10 +250,10 @@ class MiniNewsTickerWidget(QWidget):
         self.lbl_empty = QLabel("수신된 뉴스가 없습니다.", self)
         self.lbl_empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.lbl_empty.setStyleSheet("""
-            background-color: #f6f8fa;
-            border: 1px dashed #d0d7de;
-            border-radius: 4px;
-            color: #6e7781;
+            background-color: #0d1117;
+            border: 1px dashed #30363d;
+            border-radius: 5px;
+            color: #8b949e;
             font-size: 12px;
         """)
 
@@ -118,26 +279,27 @@ class MiniNewsTickerWidget(QWidget):
 
     def _style_card(self, label: QLabel, news_item: dict, width: int):
         category = news_item.get("category", "info")
+        # 다크 틴트 팔레트: (배경, 테두리, 텍스트)
         color_schemes = {
-            "info": ("#fae17d", "#9a6700"),
-            "positive": ("#dafbe1", "#1a7f37"),
-            "danger": ("#f28b96", "#a40e26"),
-            "story": ("#d99be6", "#6639ba"),
-            "guide": ("#ddf4ff", "#0969da"),
-            "guide_sub": ("#f6f8fa", "#8c959f"),
+            "info":      ("#272115", "#d29922", "#f2cc60"),
+            "positive":  ("#12261e", "#2ea043", "#7ee787"),
+            "danger":    ("#2c1619", "#f85149", "#ffa198"),
+            "story":     ("#241833", "#a371f7", "#e2c5ff"),
+            "guide":     ("#13233a", "#388bfd", "#79c0ff"),
+            "guide_sub": ("#21262d", "#30363d", "#c9d1d9"),
         }
-        bg, border = color_schemes.get(category, ("#fae17d", "#9a6700"))
+        bg, border, fg = color_schemes.get(category, ("#272115", "#d29922", "#f2cc60"))
         is_guide = category in ("guide", "guide_sub")
         font_size = "11px" if is_guide else "12px"
 
         label.setStyleSheet(f"""
             background-color: {bg};
             border: 1px solid {border};
-            border-radius: 4px;
-            padding: 3px 8px;
+            border-radius: 5px;
+            padding: 3px 10px;
             font-size: {font_size};
             font-weight: bold;
-            color: #1f2328;
+            color: {fg};
         """)
 
         title_text = news_item.get("title", "")
@@ -153,7 +315,7 @@ class MiniNewsTickerWidget(QWidget):
         else:
             label.setWordWrap(False)
             metrics = QFontMetrics(label.font())
-            elided = metrics.elidedText(title_text, Qt.TextElideMode.ElideRight, max(60, width - 20))
+            elided = metrics.elidedText(title_text, Qt.TextElideMode.ElideRight, max(60, width - 24))
             label.setText(elided)
 
     def resizeEvent(self, event):
@@ -251,8 +413,22 @@ class MiniNewsTickerWidget(QWidget):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("AI 키우기 - Prototype")
-        self.resize(1150, 720)
+        self.setWindowTitle("AI 키우기")
+        apply_dark_titlebar(self, "#161b22")
+        self.resize(1180, 740)
+        self.setStyleSheet("""
+            QMainWindow {
+                background-color: #0d1117;
+                color: #e6edf3;
+            }
+            QToolTip {
+                background-color: #161b22;
+                color: #e6edf3;
+                border: 1px solid #30363d;
+                padding: 4px 8px;
+                font-size: 12px;
+            }
+        """)
 
         self.game_state = GameState()
         self.save_manager = SaveManager()
@@ -262,7 +438,6 @@ class MainWindow(QMainWindow):
         self.news_toast_timer = QTimer(self)
         self.news_toast_timer.setSingleShot(True)
 
-        # 타이머 먼저 생성 (세이브 로드 시 시그널에서 참조할 수 있도록)
         self.passive_timer = QTimer(self)
         self.passive_timer.timeout.connect(self._on_tick)
 
@@ -347,109 +522,231 @@ class MainWindow(QMainWindow):
 
     def _init_ui(self):
         central = QWidget()
+        central.setStyleSheet("background-color: #0d1117;")
         self.setCentralWidget(central)
 
         root_layout = QHBoxLayout(central)
         root_layout.setContentsMargins(0, 0, 0, 0)
         root_layout.setSpacing(0)
 
-        # ================= [좌측 메인 영역 (72%)] =================
+        # ================= [좌측 메인 영역 (70%)] =================
         left_panel = QWidget()
+        left_panel.setStyleSheet("background-color: #0d1117;")
         left_layout = QVBoxLayout(left_panel)
         left_layout.setContentsMargins(0, 0, 0, 0)
         left_layout.setSpacing(0)
 
+        # 1. 상단 다크 HUD 바
         top_bar = QFrame()
-        top_bar.setFixedHeight(50)
-        top_bar.setStyleSheet("background-color: #ffffff; border-bottom: 2px solid #d0d7de;")
+        top_bar.setFixedHeight(58)
+        top_bar.setStyleSheet("background-color: #161b22; border-bottom: 1px solid #30363d;")
         top_layout = QHBoxLayout(top_bar)
-        top_layout.setContentsMargins(15, 5, 15, 5)
+        top_layout.setContentsMargins(16, 6, 16, 6)
+        top_layout.setSpacing(14)
+
+        # AI 이름 · 버전 필(Pill) 배지
+        ai_badge_frame = QFrame()
+        ai_badge_frame.setStyleSheet("""
+            QFrame {
+                background-color: #21262d;
+                border: 1px solid #388bfd;
+                border-radius: 14px;
+            }
+        """)
+        badge_layout = QHBoxLayout(ai_badge_frame)
+        badge_layout.setContentsMargins(10, 4, 12, 4)
+        badge_layout.setSpacing(6)
+
+        pulse_dot = QLabel()
+        pulse_dot.setFixedSize(7, 7)
+        pulse_dot.setStyleSheet("background-color: #3fb950; border-radius: 3px; border: none;")
+
+        self.lbl_ai_badge = QLabel("Proto-AI · v0.1")
+        self.lbl_ai_badge.setStyleSheet("""
+            background-color: transparent;
+            color: #79c0ff;
+            font-family: 'Consolas', 'D2Coding', monospace;
+            font-size: 12px;
+            font-weight: bold;
+            border: none;
+        """)
+        badge_layout.addWidget(pulse_dot)
+        badge_layout.addWidget(self.lbl_ai_badge)
 
         self.lbl_tokens = QLabel("0 Token")
-        self.lbl_tokens.setStyleSheet("color: #0969da; font-size: 20px; font-weight: bold;")
+        self.lbl_tokens.setStyleSheet("""
+            background-color: transparent;
+            color: #58a6ff;
+            font-family: 'Consolas', 'D2Coding', monospace;
+            font-size: 21px;
+            font-weight: bold;
+            border: none;
+        """)
 
-        # 상단 우측 스펙(Tk/Command, Tk/s) 및 버프 삼각형 배지(▲/▼)
+        # 상단 우측 스펙(Tk/Command, Tk/s) 및 버프 배지
         rates_box = QWidget()
+        rates_box.setStyleSheet("background-color: transparent; border: none;")
         rates_vbox = QVBoxLayout(rates_box)
         rates_vbox.setContentsMargins(0, 0, 0, 0)
-        rates_vbox.setSpacing(1)
+        rates_vbox.setSpacing(2)
 
         cmd_row = QHBoxLayout()
         cmd_row.setContentsMargins(0, 0, 0, 0)
-        cmd_row.setSpacing(4)
+        cmd_row.setSpacing(6)
         cmd_row.addStretch()
         self.lbl_cmd_buff_icon = QLabel("")
         self.lbl_cmd_buff_icon.hide()
         self.lbl_cmd_rate = QLabel("1 Tk/Command")
-        self.lbl_cmd_rate.setStyleSheet("color: #0969da; font-size: 13px; font-weight: bold;")
+        self.lbl_cmd_rate.setStyleSheet("""
+            background-color: transparent;
+            color: #58a6ff;
+            font-family: 'Consolas', 'D2Coding', monospace;
+            font-size: 13px;
+            font-weight: bold;
+            border: none;
+        """)
         cmd_row.addWidget(self.lbl_cmd_buff_icon)
         cmd_row.addWidget(self.lbl_cmd_rate)
 
         sec_row = QHBoxLayout()
         sec_row.setContentsMargins(0, 0, 0, 0)
-        sec_row.setSpacing(4)
+        sec_row.setSpacing(6)
         sec_row.addStretch()
         self.lbl_sec_buff_icon = QLabel("")
         self.lbl_sec_buff_icon.hide()
         self.lbl_sec_rate = QLabel("0 Tk/s")
-        self.lbl_sec_rate.setStyleSheet("color: #0969da; font-size: 13px; font-weight: bold;")
+        self.lbl_sec_rate.setStyleSheet("""
+            background-color: transparent;
+            color: #58a6ff;
+            font-family: 'Consolas', 'D2Coding', monospace;
+            font-size: 13px;
+            font-weight: bold;
+            border: none;
+        """)
         sec_row.addWidget(self.lbl_sec_buff_icon)
         sec_row.addWidget(self.lbl_sec_rate)
 
         rates_vbox.addLayout(cmd_row)
         rates_vbox.addLayout(sec_row)
 
+        top_layout.addWidget(ai_badge_frame)
         top_layout.addWidget(self.lbl_tokens)
         top_layout.addStretch()
         top_layout.addWidget(rates_box)
         left_layout.addWidget(top_bar)
 
+        # 2. 중앙 가상 콘솔
         self.console_widget = VirtualConsoleWidget(self.game_state)
         left_layout.addWidget(self.console_widget, stretch=1)
 
+        # 3. 하단 도크 (SYSTEM SPECS + NEWS TICKER)
         bottom_bar = QFrame()
-        bottom_bar.setFixedHeight(155)
-        bottom_bar.setStyleSheet("background-color: #ffffff; border-top: 2px solid #d0d7de;")
+        bottom_bar.setFixedHeight(162)
+        bottom_bar.setStyleSheet("background-color: #161b22; border-top: 1px solid #30363d;")
         bottom_layout = QHBoxLayout(bottom_bar)
         bottom_layout.setContentsMargins(0, 0, 0, 0)
         bottom_layout.setSpacing(0)
 
+        # 좌측 SYSTEM SPECS 패널 (챕터 표기 없음, Pretendard 폰트 적용)
         specs_box = QWidget()
+        specs_box.setStyleSheet("background-color: #161b22; border: none;")
         specs_layout = QVBoxLayout(specs_box)
-        specs_layout.setContentsMargins(12, 8, 12, 8)
-        specs_layout.setSpacing(2)
+        specs_layout.setContentsMargins(14, 10, 14, 10)
+        specs_layout.setSpacing(6)
 
-        self.lbl_specs = QLabel()
-        self.lbl_specs.setStyleSheet("color: #1f2328; font-size: 13px; font-weight: bold;")
-        self.lbl_bench = QLabel()
-        self.lbl_bench.setStyleSheet("color: #0969da; font-size: 14px; font-weight: bold;")
+        lbl_specs_header = QLabel("SYSTEM SPECS")
+        lbl_specs_header.setStyleSheet("""
+            background-color: transparent;
+            color: #8b949e;
+            font-family: 'Pretendard', 'Malgun Gothic', sans-serif;
+            font-size: 11px;
+            font-weight: bold;
+            letter-spacing: 0.5px;
+            border: none;
+        """)
+        specs_layout.addWidget(lbl_specs_header)
 
-        specs_layout.addWidget(self.lbl_specs)
-        specs_layout.addWidget(self.lbl_bench)
-        bottom_layout.addWidget(specs_box, stretch=1)
+        specs_grid = QGridLayout()
+        specs_grid.setContentsMargins(0, 0, 0, 0)
+        specs_grid.setHorizontalSpacing(10)
+        specs_grid.setVerticalSpacing(3)
 
+        self.spec_value_labels: dict[str, QLabel] = {}
+        key_style = (
+            "background-color: transparent; color: #8b949e; "
+            "font-family: 'Pretendard', 'Malgun Gothic', sans-serif; font-size: 12px; font-weight: bold; border: none;"
+        )
+        val_style = (
+            "background-color: transparent; color: #e6edf3; "
+            "font-family: 'Pretendard', 'Malgun Gothic', sans-serif; font-size: 12px; border: none;"
+        )
+        for row_idx, key in enumerate(("CPU", "GPU", "RAM", "STORAGE")):
+            lbl_k = QLabel(key)
+            lbl_k.setFixedWidth(64)
+            lbl_k.setStyleSheet(key_style)
+            lbl_v = QLabel("-")
+            lbl_v.setStyleSheet(val_style)
+            specs_grid.addWidget(lbl_k, row_idx, 0)
+            specs_grid.addWidget(lbl_v, row_idx, 1)
+            self.spec_value_labels[key] = lbl_v
+
+        specs_layout.addLayout(specs_grid)
+        specs_layout.addStretch()
+
+        bench_frame = QFrame()
+        bench_frame.setStyleSheet("""
+            QFrame {
+                background-color: #21262d;
+                border: 1px solid #30363d;
+                border-radius: 4px;
+            }
+        """)
+        bench_row = QHBoxLayout(bench_frame)
+        bench_row.setContentsMargins(10, 4, 10, 4)
+
+        lbl_bench_k = QLabel("BENCH_SCORE")
+        lbl_bench_k.setStyleSheet("""
+            background-color: transparent; color: #58a6ff;
+            font-family: 'Pretendard', 'Malgun Gothic', sans-serif; font-size: 12px; font-weight: bold; border: none;
+        """)
+        self.lbl_bench = QLabel("40")
+        self.lbl_bench.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        self.lbl_bench.setStyleSheet("""
+            background-color: transparent; color: #58a6ff;
+            font-family: 'Pretendard', 'Malgun Gothic', sans-serif; font-size: 12px; font-weight: bold; border: none;
+        """)
+        bench_row.addWidget(lbl_bench_k)
+        bench_row.addStretch()
+        bench_row.addWidget(self.lbl_bench)
+        specs_layout.addWidget(bench_frame)
+
+        bottom_layout.addWidget(specs_box, stretch=48)
+
+        # 우측 NEWS / DEV GUIDE 패널
         news_box = QFrame()
-        news_box.setStyleSheet("border-left: 2px solid #d0d7de;")
+        news_box.setStyleSheet("QFrame { background-color: #161b22; border-left: 1px solid #30363d; }")
         news_layout = QVBoxLayout(news_box)
-        news_layout.setContentsMargins(10, 6, 10, 8)
+        news_layout.setContentsMargins(12, 10, 12, 10)
         news_layout.setSpacing(6)
 
         news_header = QHBoxLayout()
         news_header.setSpacing(6)
 
         self.lbl_news_title = QLabel("DEV GUIDE")
-        self.lbl_news_title.setStyleSheet("font-size: 15px; font-weight: bold; color: #0969da; border: none;")
+        self.lbl_news_title.setStyleSheet(
+            "background-color: transparent; font-size: 13px; font-weight: bold; color: #58a6ff; border: none;"
+        )
 
         self.lbl_unread_badge = QLabel("0")
         self.lbl_unread_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.lbl_unread_badge.setFixedHeight(20)
-        self.lbl_unread_badge.setMinimumWidth(20)
+        self.lbl_unread_badge.setFixedHeight(18)
+        self.lbl_unread_badge.setMinimumWidth(18)
         self.lbl_unread_badge.setStyleSheet("""
-            background-color: #cf222e;
+            background-color: #f85149;
             color: #ffffff;
-            border-radius: 10px;
-            padding: 0px 6px;
-            font-size: 11px;
+            border-radius: 9px;
+            padding: 0px 5px;
+            font-size: 10px;
             font-weight: bold;
             border: none;
         """)
@@ -457,9 +754,9 @@ class MainWindow(QMainWindow):
 
         self.lbl_news_toast = QLabel("새 뉴스 도착")
         self.lbl_news_toast.setStyleSheet("""
-            background-color: #ddf4ff;
-            color: #0969da;
-            border: 1px solid #54aeff;
+            background-color: #13233a;
+            color: #79c0ff;
+            border: 1px solid #388bfd;
             border-radius: 4px;
             padding: 1px 6px;
             font-size: 11px;
@@ -467,10 +764,25 @@ class MainWindow(QMainWindow):
         """)
         self.lbl_news_toast.hide()
 
-        self.btn_news_expand = QPushButton("↗")
-        self.btn_news_expand.setFixedSize(28, 24)
+        self.btn_news_expand = QPushButton("↗ 전체 / 도감 / 설정")
+        self.btn_news_expand.setFixedHeight(24)
         self.btn_news_expand.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_news_expand.setToolTip("전체 뉴스 / AI 활동 / 도감 / 설정 열기")
+        self.btn_news_expand.setStyleSheet("""
+            QPushButton {
+                background-color: #21262d;
+                color: #e6edf3;
+                border: 1px solid #30363d;
+                border-radius: 4px;
+                padding: 0px 10px;
+                font-size: 11px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                border-color: #58a6ff;
+                color: #58a6ff;
+            }
+        """)
         self.btn_news_expand.clicked.connect(lambda: self._show_news_popup(auto_triggered=False))
 
         news_header.addWidget(self.lbl_news_title)
@@ -482,14 +794,14 @@ class MainWindow(QMainWindow):
 
         self.mini_news_ticker = MiniNewsTickerWidget()
         news_layout.addWidget(self.mini_news_ticker, stretch=1)
-        bottom_layout.addWidget(news_box, stretch=1)
+        bottom_layout.addWidget(news_box, stretch=52)
 
         left_layout.addWidget(bottom_bar)
-        root_layout.addWidget(left_panel, stretch=72)
+        root_layout.addWidget(left_panel, stretch=70)
 
-        # ================= [우측 업그레이드 트리 영역 (28%)] =================
+        # ================= [우측 업그레이드 트리 영역 (30%)] =================
         self.tree_widget = UpgradeTreeWidget(self.game_state)
-        root_layout.addWidget(self.tree_widget, stretch=28)
+        root_layout.addWidget(self.tree_widget, stretch=30)
 
     def _connect_signals(self):
         self.game_state.state_changed.connect(self._update_ui)
@@ -504,15 +816,10 @@ class MainWindow(QMainWindow):
         self.console_widget.request_reset_game.connect(self._on_console_reset_game)
 
     def _on_ai_naming_requested(self):
-        """Chap 3 공개 베타 진입 시 AI 이름 지정 다이얼로그"""
-        name, ok = QInputDialog.getText(
-            self,
-            "AI 공식 명칭 지정",
-            "공개 베타(v0.9-beta) 배포를 앞두고 AI의 이름을 지어주세요.\n(미입력 시 기본 명칭 'Proto-AI'가 유지됩니다.)",
-            text=self.game_state.ai_name
-        )
-        if ok and name.strip():
-            self.game_state.set_ai_name(name.strip())
+        """Chap 3 공개 베타 진입 시 AI 이름 지정 다크 다이얼로그"""
+        dlg = AiNamingDialog(self.game_state.ai_name, self)
+        if dlg.exec() == QDialog.DialogCode.Accepted and dlg.get_name():
+            self.game_state.set_ai_name(dlg.get_name())
         else:
             self.game_state.set_ai_name(self.game_state.ai_name)
 
@@ -562,7 +869,9 @@ class MainWindow(QMainWindow):
 
         if is_tut:
             self.lbl_news_title.setText("DEV GUIDE")
-            self.lbl_news_title.setStyleSheet("font-size: 15px; font-weight: bold; color: #0969da; border: none;")
+            self.lbl_news_title.setStyleSheet(
+                "background-color: transparent; font-size: 13px; font-weight: bold; color: #58a6ff; border: none;"
+            )
             self.lbl_unread_badge.hide()
             self.lbl_news_toast.hide()
 
@@ -591,7 +900,9 @@ class MainWindow(QMainWindow):
         else:
             if self._was_tutorial_active or force:
                 self.lbl_news_title.setText("NEWS")
-                self.lbl_news_title.setStyleSheet("font-size: 15px; font-weight: bold; color: #1f2328; border: none;")
+                self.lbl_news_title.setStyleSheet(
+                    "background-color: transparent; font-size: 13px; font-weight: bold; color: #e6edf3; border: none;"
+                )
                 self.mini_news_ticker.set_initial_items(self.game_state.news_history)
                 self._update_unread_badge(self.game_state.unread_news_count)
                 self._was_tutorial_active = False
@@ -600,11 +911,16 @@ class MainWindow(QMainWindow):
         gs = self.game_state
         buff = gs.active_news_buff
 
-        # 기본 숨김 처리
         self.lbl_cmd_buff_icon.hide()
         self.lbl_sec_buff_icon.hide()
-        self.lbl_cmd_rate.setStyleSheet("color: #0969da; font-size: 13px; font-weight: bold;")
-        self.lbl_sec_rate.setStyleSheet("color: #0969da; font-size: 13px; font-weight: bold;")
+        self.lbl_cmd_rate.setStyleSheet("""
+            background-color: transparent; color: #58a6ff;
+            font-family: 'Consolas', 'D2Coding', monospace; font-size: 13px; font-weight: bold; border: none;
+        """)
+        self.lbl_sec_rate.setStyleSheet("""
+            background-color: transparent; color: #58a6ff;
+            font-family: 'Consolas', 'D2Coding', monospace; font-size: 13px; font-weight: bold; border: none;
+        """)
         self.lbl_cmd_rate.setToolTip("")
         self.lbl_sec_rate.setToolTip("")
 
@@ -612,45 +928,72 @@ class MainWindow(QMainWindow):
             return
 
         target = buff.get("target")
+        mode = buff.get("mode", "flat")
+        val = float(buff.get("value", 0.0))
         is_pos = bool(buff.get("is_positive", True))
         rem = max(1, int(round(buff.get("remaining_sec", 0))))
         summary = buff.get("summary", "")
 
         icon_char = "▲" if is_pos else "▼"
-        icon_color = "#1a7f37" if is_pos else "#cf222e"
-        tooltip_text = f"{summary}\n남은 시간: {rem}초"
+        sign = "+" if val >= 0 else "-"
+        abs_val = abs(val)
+        if mode == "percent":
+            val_str = f"{sign}{int(abs_val)}%"
+        else:
+            val_str = f"{sign}{format_number(abs_val)}"
+
+        if is_pos:
+            tag_bg, tag_bd, tag_fg = "#12261e", "#2ea043", "#7ee787"
+        else:
+            tag_bg, tag_bd, tag_fg = "#2c1619", "#f85149", "#ffa198"
+
+        tag_style = f"""
+            background-color: {tag_bg};
+            color: {tag_fg};
+            border: 1px solid {tag_bd};
+            border-radius: 4px;
+            padding: 1px 6px;
+            font-family: 'Consolas', 'D2Coding', monospace;
+            font-size: 11px;
+            font-weight: bold;
+        """
+        rate_style = f"""
+            background-color: transparent; color: {tag_fg};
+            font-family: 'Consolas', 'D2Coding', monospace; font-size: 13px; font-weight: bold; border: none;
+        """
+
+        # 배지에는 효과 수치 + 남은 시간 표시, 호버 시에는 효과 내용만 표시
+        badge_text = f"{icon_char} {val_str} ({rem}s)"
+        tooltip_text = summary
 
         if target == "command_rate":
-            self.lbl_cmd_buff_icon.setText(icon_char)
-            self.lbl_cmd_buff_icon.setStyleSheet(f"color: {icon_color}; font-size: 12px; font-weight: bold;")
+            self.lbl_cmd_buff_icon.setText(badge_text)
+            self.lbl_cmd_buff_icon.setStyleSheet(tag_style)
             self.lbl_cmd_buff_icon.setToolTip(tooltip_text)
             self.lbl_cmd_buff_icon.show()
-            self.lbl_cmd_rate.setStyleSheet(f"color: {icon_color}; font-size: 13px; font-weight: bold;")
+            self.lbl_cmd_rate.setStyleSheet(rate_style)
             self.lbl_cmd_rate.setToolTip(tooltip_text)
         elif target == "passive_rate":
-            self.lbl_sec_buff_icon.setText(icon_char)
-            self.lbl_sec_buff_icon.setStyleSheet(f"color: {icon_color}; font-size: 12px; font-weight: bold;")
+            self.lbl_sec_buff_icon.setText(badge_text)
+            self.lbl_sec_buff_icon.setStyleSheet(tag_style)
             self.lbl_sec_buff_icon.setToolTip(tooltip_text)
             self.lbl_sec_buff_icon.show()
-            self.lbl_sec_rate.setStyleSheet(f"color: {icon_color}; font-size: 13px; font-weight: bold;")
+            self.lbl_sec_rate.setStyleSheet(rate_style)
             self.lbl_sec_rate.setToolTip(tooltip_text)
 
     def _update_ui(self):
         gs = self.game_state
+        self.lbl_ai_badge.setText(f"{gs.ai_name} · {gs.get_ai_version()}")
         self.lbl_tokens.setText(f"{format_number(gs.tokens)} Token")
         self.lbl_cmd_rate.setText(f"{format_number(gs.effective_tokens_per_command)} Tk/Command")
         self.lbl_sec_rate.setText(f"{format_number(gs.effective_tokens_per_sec)} Tk/s")
         self._update_rate_badges()
 
         s = gs.specs
-        self.lbl_specs.setText(
-            f"Specs ({gs.ai_name} {gs.get_ai_version()}) :\n"
-            f"CPU : {s['CPU']}\n"
-            f"GPU : {s['GPU']}\n"
-            f"RAM : {s['RAM']}\n"
-            f"STORAGE : {s['STORAGE']}"
-        )
-        self.lbl_bench.setText(f"BENCH_SCORE : {format_number(s['BENCH_SCORE'])}")
+        for key in ("CPU", "GPU", "RAM", "STORAGE"):
+            if key in self.spec_value_labels:
+                self.spec_value_labels[key].setText(str(s.get(key, "-")))
+        self.lbl_bench.setText(f"{format_number(s['BENCH_SCORE'])}")
 
         self._sync_bottom_right_panel(force=False)
         self.tree_widget.refresh_tree()
@@ -678,9 +1021,9 @@ class MainWindow(QMainWindow):
             if category == "danger":
                 self.lbl_news_toast.setText("악재 속보 도착")
                 self.lbl_news_toast.setStyleSheet("""
-                    background-color: #ffebe9;
-                    color: #cf222e;
-                    border: 1px solid #ff8182;
+                    background-color: #2c1619;
+                    color: #ffa198;
+                    border: 1px solid #f85149;
                     border-radius: 4px;
                     padding: 1px 6px;
                     font-size: 11px;
@@ -689,9 +1032,9 @@ class MainWindow(QMainWindow):
             elif category == "positive":
                 self.lbl_news_toast.setText("호재 뉴스 도착")
                 self.lbl_news_toast.setStyleSheet("""
-                    background-color: #dafbe1;
-                    color: #1a7f37;
-                    border: 1px solid #4ac26b;
+                    background-color: #12261e;
+                    color: #7ee787;
+                    border: 1px solid #2ea043;
                     border-radius: 4px;
                     padding: 1px 6px;
                     font-size: 11px;
@@ -700,9 +1043,9 @@ class MainWindow(QMainWindow):
             else:
                 self.lbl_news_toast.setText("새 뉴스 도착")
                 self.lbl_news_toast.setStyleSheet("""
-                    background-color: #ddf4ff;
-                    color: #0969da;
-                    border: 1px solid #54aeff;
+                    background-color: #13233a;
+                    color: #79c0ff;
+                    border: 1px solid #388bfd;
                     border-radius: 4px;
                     padding: 1px 6px;
                     font-size: 11px;
