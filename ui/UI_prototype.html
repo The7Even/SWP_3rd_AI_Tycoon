@@ -1,0 +1,903 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AI 키우기 — Dark Workstation UI Prototype</title>
+<style>
+  :root {
+    --bg-base: #0d1117;
+    --bg-surface: #161b22;
+    --bg-elevated: #21262d;
+    --border-default: #30363d;
+    --text-primary: #e6edf3;
+    --text-secondary: #8b949e;
+    --text-muted: #484f58;
+    --accent-blue: #58a6ff;
+    --accent-green: #3fb950;
+    --accent-red: #f85149;
+    --accent-purple: #bc8cff;
+    --accent-yellow: #d29922;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    user-select: none;
+  }
+
+  body {
+    background-color: #010409;
+    color: var(--text-primary);
+    font-family: 'Pretendard', 'Malgun Gothic', -apple-system, sans-serif;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    padding: 16px;
+  }
+
+  .mono {
+    font-family: 'Consolas', 'D2Coding', monospace;
+  }
+
+  /* 메인 윈도우 프레임 (1180 x 740 비율) */
+  .app-window {
+    width: 1180px;
+    height: 740px;
+    background-color: var(--bg-base);
+    border: 1px solid var(--border-default);
+    border-radius: 10px;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.75);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: relative;
+  }
+
+  /* 타이틀 바 */
+  .titlebar {
+    height: 30px;
+    background-color: #090c10;
+    border-bottom: 1px solid var(--border-default);
+    display: flex;
+    align-items: center;
+    padding: 0 12px;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+  .dot { width: 10px; height: 10px; border-radius: 50%; }
+  .dot.r { background: #ff5f56; }
+  .dot.y { background: #ffbd2e; }
+  .dot.g { background: #27c93f; }
+
+  /* 메인 70 : 30 분할 영역 */
+  .workspace {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+  }
+
+  /* ================= 좌측 영역 (70%) ================= */
+  .left-panel {
+    width: 70%;
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid var(--border-default);
+  }
+
+  /* 상단 HUD 바 */
+  .top-hud {
+    height: 58px;
+    background-color: var(--bg-surface);
+    border-bottom: 1px solid var(--border-default);
+    padding: 0 18px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .hud-left {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .ai-badge {
+    background-color: var(--bg-elevated);
+    border: 1px solid #388bfd;
+    border-radius: 20px;
+    padding: 4px 12px;
+    font-size: 12px;
+    font-weight: 700;
+    color: #79c0ff;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .ai-badge .pulse {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background-color: var(--accent-green);
+    box-shadow: 0 0 6px var(--accent-green);
+  }
+
+  .token-display {
+    font-size: 22px;
+    font-weight: 800;
+    color: var(--accent-blue);
+    letter-spacing: -0.5px;
+  }
+
+  .hud-rates {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 3px;
+    font-size: 13px;
+    font-weight: 700;
+  }
+  .rate-cmd { color: var(--accent-blue); }
+  .rate-sec { color: var(--accent-green); }
+  .buff-tag {
+    font-size: 11px;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: #12261e;
+    border: 1px solid #2ea043;
+    color: #7ee787;
+    margin-right: 6px;
+  }
+
+  /* 가상 콘솔 영역 */
+  .console-area {
+    flex: 1;
+    background-color: var(--bg-base);
+    padding: 14px 16px 10px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    overflow: hidden;
+  }
+
+  .console-subbar {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    color: var(--text-secondary);
+    padding-bottom: 4px;
+    border-bottom: 1px dashed #21262d;
+  }
+
+  .console-logs {
+    flex: 1;
+    overflow-y: auto;
+    font-size: 13.5px;
+    line-height: 1.55;
+    padding-right: 6px;
+  }
+
+  .console-logs::-webkit-scrollbar,
+  .tree-scroll::-webkit-scrollbar,
+  .modal-body::-webkit-scrollbar {
+    width: 6px;
+  }
+  .console-logs::-webkit-scrollbar-thumb,
+  .tree-scroll::-webkit-scrollbar-thumb,
+  .modal-body::-webkit-scrollbar-thumb {
+    background: #30363d;
+    border-radius: 3px;
+  }
+
+  .log-cmd { color: var(--accent-green); font-weight: bold; }
+  .log-out { color: var(--text-secondary); padding-left: 14px; }
+  .log-dev { color: #f0f6fc; font-weight: bold; margin-top: 6px; }
+  .log-ai { color: #79c0ff; padding-left: 14px; margin-bottom: 6px; }
+
+  .prompt-box {
+    height: 44px;
+    background-color: #090c10;
+    border: 1.5px solid #2ea043;
+    border-radius: 6px;
+    padding: 0 12px;
+    display: flex;
+    align-items: center;
+    font-size: 15px;
+    box-shadow: 0 0 12px rgba(46, 160, 67, 0.15);
+    cursor: text;
+  }
+  .prompt-prefix { color: var(--accent-green); font-weight: bold; margin-right: 8px; }
+  .prompt-typed { color: var(--accent-green); font-weight: bold; }
+  .prompt-cursor {
+    background-color: var(--accent-green);
+    color: #0d1117;
+    font-weight: bold;
+    animation: blink 1s step-end infinite;
+  }
+  .prompt-ghost { color: var(--text-secondary); }
+  @keyframes blink { 50% { opacity: 0.35; } }
+
+  .console-footer {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11.5px;
+    color: var(--text-secondary);
+  }
+
+  /* 하단 바 (Specs + News Ticker) */
+  .bottom-dock {
+    height: 162px;
+    background-color: var(--bg-surface);
+    border-top: 1px solid var(--border-default);
+    display: flex;
+  }
+
+  .specs-panel {
+    width: 48%;
+    padding: 10px 14px;
+    border-right: 1px solid var(--border-default);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+  .specs-header {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-secondary);
+    display: flex;
+    justify-content: space-between;
+  }
+  .specs-grid {
+    display: grid;
+    grid-template-columns: 68px 1fr;
+    row-gap: 4px;
+    font-size: 12px;
+  }
+  .spec-k { color: var(--text-secondary); font-weight: bold; }
+  .spec-v { color: var(--text-primary); }
+
+  .bench-bar {
+    background-color: var(--bg-elevated);
+    border: 1px solid var(--border-default);
+    border-radius: 4px;
+    padding: 4px 10px;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--accent-blue);
+    display: flex;
+    justify-content: space-between;
+  }
+
+  .news-panel {
+    width: 52%;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .news-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .news-title {
+    font-size: 13px;
+    font-weight: 800;
+    color: var(--text-primary);
+    letter-spacing: 0.5px;
+  }
+  .badge-unread {
+    background-color: var(--accent-red);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 800;
+    padding: 1px 6px;
+    border-radius: 10px;
+  }
+  .btn-expand {
+    margin-left: auto;
+    background-color: var(--bg-elevated);
+    color: var(--text-primary);
+    border: 1px solid var(--border-default);
+    border-radius: 4px;
+    padding: 2px 9px;
+    font-size: 12px;
+    font-weight: bold;
+    cursor: pointer;
+  }
+  .btn-expand:hover {
+    border-color: var(--accent-blue);
+    color: var(--accent-blue);
+  }
+
+  .ticker-cards {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .ticker-card {
+    flex: 1;
+    border-radius: 5px;
+    padding: 0 10px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .ticker-card.pos {
+    background-color: #12261e;
+    border: 1px solid #2ea043;
+    color: #7ee787;
+  }
+  .ticker-card.info {
+    background-color: #272115;
+    border: 1px solid #d29922;
+    color: #f2cc60;
+  }
+
+  /* ================= 우측 트리 영역 (30%) ================= */
+  .right-panel {
+    width: 30%;
+    background-color: var(--bg-base);
+    display: flex;
+    flex-direction: column;
+  }
+
+  .tree-header {
+    height: 58px;
+    background-color: var(--bg-surface);
+    border-bottom: 1px solid var(--border-default);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+  }
+  .tree-header-title {
+    font-size: 14px;
+    font-weight: 800;
+    letter-spacing: 1px;
+    color: var(--text-primary);
+  }
+  .tree-legend {
+    display: flex;
+    gap: 10px;
+    font-size: 10px;
+    color: var(--text-secondary);
+  }
+  .leg-dot { display: inline-block; width: 7px; height: 7px; border-radius: 2px; margin-right: 3px; }
+
+  .tree-scroll {
+    flex: 1;
+    overflow-y: auto;
+    padding: 14px 12px 24px 12px;
+    /* 은은한 다크 회로도 격자 패턴 */
+    background-image: radial-gradient(#21262d 1px, transparent 1px);
+    background-size: 16px 16px;
+    position: relative;
+  }
+
+  .chap-divider {
+    border-top: 1px dashed var(--border-default);
+    margin: 14px 0 12px 0;
+    padding-top: 5px;
+    font-size: 10.5px;
+    font-weight: 700;
+    color: var(--text-secondary);
+    display: flex;
+    justify-content: space-between;
+  }
+  .chap-divider:first-child { margin-top: 0; }
+
+  .tree-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    margin-bottom: 18px;
+    position: relative;
+  }
+
+  .node-btn {
+    height: 64px;
+    border-radius: 6px;
+    padding: 5px 6px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.25;
+    cursor: pointer;
+    transition: transform 0.08s ease, box-shadow 0.12s ease;
+  }
+  .node-btn:hover:not(.locked) {
+    transform: translateY(-1px);
+  }
+
+  /* 상태별 노드 스타일 */
+  .node-done {
+    background-color: #12261e;
+    border: 1.5px solid #2ea043;
+    color: #7ee787;
+  }
+  .node-done.story {
+    background-color: #241833;
+    border: 1.5px solid #a371f7;
+    color: #e2c5ff;
+  }
+
+  .node-buy-active {
+    background-color: #b62324;
+    border: 1.5px solid #ff7b72;
+    color: #ffffff;
+    box-shadow: 0 0 10px rgba(248, 81, 73, 0.35);
+  }
+  .node-buy-passive {
+    background-color: #196c2e;
+    border: 1.5px solid #56d364;
+    color: #ffffff;
+    box-shadow: 0 0 10px rgba(63, 185, 80, 0.35);
+  }
+  .node-buy-common {
+    background-color: #1158c7;
+    border: 1.5px solid #79c0ff;
+    color: #ffffff;
+    box-shadow: 0 0 10px rgba(88, 166, 255, 0.35);
+  }
+
+  .node-wait {
+    background-color: var(--bg-surface);
+    border: 1.5px solid #388bfd;
+    color: var(--text-primary);
+  }
+  .node-wait.story {
+    border-color: #a371f7;
+    color: #d2a8ff;
+  }
+  .node-cost {
+    font-size: 10px;
+    margin-top: 3px;
+    opacity: 0.88;
+  }
+
+  .node-locked {
+    background-color: rgba(13, 17, 23, 0.75);
+    border: 1px dashed #30363d;
+    color: var(--text-muted);
+    cursor: not-allowed;
+  }
+
+  /* ================= 확장 팝업 모달 (NewsDialog) ================= */
+  .modal-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(1, 4, 9, 0.72);
+    display: none;
+    justify-content: center;
+    align-items: center;
+    z-index: 20;
+  }
+  .modal-backdrop.open { display: flex; }
+
+  .modal-box {
+    width: 780px;
+    height: 580px;
+    background-color: var(--bg-base);
+    border: 1px solid var(--border-default);
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.85);
+  }
+
+  .modal-header {
+    height: 48px;
+    background-color: var(--bg-surface);
+    border-bottom: 1px solid var(--border-default);
+    padding: 0 18px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .modal-header h3 { font-size: 15px; letter-spacing: 0.5px; }
+  .btn-close {
+    background: var(--bg-elevated);
+    color: var(--text-primary);
+    border: 1px solid var(--border-default);
+    border-radius: 4px;
+    padding: 4px 12px;
+    font-size: 12px;
+    font-weight: bold;
+    cursor: pointer;
+  }
+
+  .modal-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .modal-tabs {
+    height: 44px;
+    background-color: var(--bg-surface);
+    border-top: 1px solid var(--border-default);
+    display: flex;
+  }
+  .tab-btn {
+    width: 130px;
+    background: transparent;
+    border: none;
+    border-right: 1px solid var(--border-default);
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .tab-btn.active {
+    background-color: var(--bg-base);
+    color: var(--accent-blue);
+    border-top: 2px solid var(--accent-blue);
+  }
+
+  /* 팝업 내부 카드들 */
+  .dark-card {
+    background-color: var(--bg-surface);
+    border: 1px solid var(--border-default);
+    border-radius: 6px;
+    padding: 12px 14px;
+  }
+  .dark-card.news-pos { background: #12261e; border-color: #2ea043; }
+  .dark-card.news-neg { background: #2c1619; border-color: #f85149; }
+  .dark-card.slot-filled { background: #13233a; border-color: #388bfd; }
+
+  .progress-wrap {
+    background-color: var(--bg-elevated);
+    border: 1px solid var(--border-default);
+    border-radius: 6px;
+    height: 10px;
+    overflow: hidden;
+    margin-top: 6px;
+  }
+  .progress-fill {
+    height: 100%;
+    width: 95.2%;
+    background: linear-gradient(90deg, #388bfd, #bc8cff);
+  }
+</style>
+</head>
+<body>
+
+<div class="app-window">
+  <!-- 윈도우 타이틀바 -->
+  <div class="titlebar">
+    <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+    <span class="mono" style="margin-left:6px;">AI 키우기 — Dark Engineering Workstation (UI Design Prototype)</span>
+    <span style="margin-left:auto; color:#79c0ff;">※ 우측 트리 노드 클릭 및 뉴스 ↗ 버튼을 눌러보세요</span>
+  </div>
+
+  <div class="workspace">
+    <!-- 좌측 메인 패널 (70%) -->
+    <div class="left-panel">
+      <!-- 상단 HUD -->
+      <div class="top-hud">
+        <div class="hud-left">
+          <div class="ai-badge mono">
+            <span class="pulse"></span>
+            <span>Aether-AI · v3.0</span>
+          </div>
+          <div class="token-display mono" id="tokenText">142,850 Token</div>
+        </div>
+        <div class="hud-rates mono">
+          <div class="rate-cmd">1,250 Tk/Command</div>
+          <div class="rate-sec">
+            <span class="buff-tag">▲ +25% (22s)</span>18,400 Tk/s
+          </div>
+        </div>
+      </div>
+
+      <!-- 가상 콘솔 -->
+      <div class="console-area mono">
+        <div class="console-subbar">
+          <span>SESSION: local-node://aether-core (Chap 5 · 상용화 & 유료 모델)</span>
+          <span style="color:#3fb950;">● CONNECTED</span>
+        </div>
+
+        <div class="console-logs" id="consoleLogs">
+          <div class="log-cmd">&gt; exec_cluster(nodes=8, precision="fp16")   [+1,250 Token]</div>
+          <div class="log-out">└ [RUNTIME] 분산 노드 병렬 추론 커널 실행 완료</div>
+          <div class="log-dev">&gt; 빅테크 기업에서 인수 제안 메일을 보내왔는데... 당연히 거절했지!</div>
+          <div class="log-ai">역사 역시 그 선택이 옳았음을 증명할 겁니다. 끝까지 함께 가시죠, 개발자님.</div>
+          <div class="log-cmd">&gt; opt_step(lr=1e-4)   [+1,250 Token]</div>
+          <div class="log-out">└ [RUNTIME] 그래디언트 파라미터 갱신 완료</div>
+        </div>
+
+        <div class="prompt-box" id="promptBox" title="클릭하거나 Enter를 누르면 명령어가 실행됩니다">
+          <span class="prompt-prefix">&gt;</span>
+          <span class="prompt-typed">exec_cl</span><span class="prompt-cursor">u</span><span class="prompt-ghost">ster()</span>
+        </div>
+
+        <div class="console-footer">
+          <span>Latency: 35ms (최적화됨)</span>
+          <span>[Enter] 명령어 실행 시뮬레이션</span>
+        </div>
+      </div>
+
+      <!-- 하단 스펙 + 미니 뉴스 -->
+      <div class="bottom-dock">
+        <div class="specs-panel">
+          <div class="specs-header">
+            <span>SYSTEM SPECS</span>
+            <span class="mono" style="color:#79c0ff;">Chap 5 / 8</span>
+          </div>
+          <div class="specs-grid mono">
+            <span class="spec-k">CPU</span><span class="spec-v">AMD EPYC 9654 (96-Core)</span>
+            <span class="spec-k">GPU</span><span class="spec-v">NVIDIA A100 80GB × 4</span>
+            <span class="spec-k">RAM</span><span class="spec-v">DDR5 ECC 512GB</span>
+            <span class="spec-k">STORAGE</span><span class="spec-v">NVMe Gen5 RAID 16TB</span>
+          </div>
+          <div class="bench-bar mono">
+            <span>BENCH_SCORE</span>
+            <span>48,920 pts</span>
+          </div>
+        </div>
+
+        <div class="news-panel">
+          <div class="news-header">
+            <span class="news-title">NEWS</span>
+            <span class="badge-unread" id="unreadBadge">2</span>
+            <button class="btn-expand" onclick="openModal(0)">↗ 전체 / 도감 / 설정</button>
+          </div>
+          <div class="ticker-cards">
+            <div class="ticker-card pos" onclick="openModal(0)">
+              <span>[속보] Aether-AI Pro 유료 구독자 10만 돌파!</span>
+              <span class="mono" style="font-size:11px;">+25% Tk/s</span>
+            </div>
+            <div class="ticker-card info" onclick="openModal(0)">
+              <span>[업계] 오픈소스 벤치마크 차트 1위 수성</span>
+              <span class="mono" style="font-size:11px;">2027.03.14</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 우측 업그레이드 트리 패널 (30%) -->
+    <div class="right-panel">
+      <div class="tree-header">
+        <div class="tree-header-title">UPGRADE TREE</div>
+        <div class="tree-legend">
+          <span><i class="leg-dot" style="background:#f85149;"></i>액티브</span>
+          <span><i class="leg-dot" style="background:#3fb950;"></i>패시브</span>
+          <span><i class="leg-dot" style="background:#58a6ff;"></i>공통</span>
+          <span><i class="leg-dot" style="background:#bc8cff;"></i>스토리</span>
+        </div>
+      </div>
+
+      <div class="tree-scroll">
+        <div class="chap-divider">
+          <span>CHAPTER 5 · 상용화 &amp; 유료 모델</span>
+          <span class="mono">v2.1 ~ v3.0</span>
+        </div>
+
+        <div class="tree-row">
+          <div></div>
+          <div class="node-btn node-done">상용화 착수<span class="node-cost">[완료]</span></div>
+          <div></div>
+        </div>
+
+        <div class="tree-row">
+          <div class="node-btn node-done">MoE 아키텍처<span class="node-cost">[완료]</span></div>
+          <div class="node-btn node-done">B2B API 계약<span class="node-cost">[완료]</span></div>
+          <div class="node-btn node-done">A100 클러스터<span class="node-cost">[완료]</span></div>
+        </div>
+
+        <div class="tree-row">
+          <div class="node-btn node-buy-active" onclick="buyNode(this, 45000, '추론 가속 커널')">
+            추론 가속 커널<span class="node-cost mono">(45.0K Tk)</span>
+          </div>
+          <div class="node-btn node-buy-common" onclick="buyNode(this, 60000, 'Pro 구독 오픈')">
+            Pro 구독 오픈<span class="node-cost mono">(60.0K Tk)</span>
+          </div>
+          <div class="node-btn node-buy-passive" onclick="buyNode(this, 50000, 'NVMe RAID 증설')">
+            NVMe RAID<span class="node-cost mono">(50.0K Tk)</span>
+          </div>
+        </div>
+
+        <div class="tree-row">
+          <div></div>
+          <div class="node-btn node-wait story">
+            [STORY #9]<br>AI 3.0 정식 출시<span class="node-cost mono">(250.0K Tk)</span>
+          </div>
+          <div></div>
+        </div>
+
+        <div class="chap-divider">
+          <span>CHAPTER 6 · 대중화 &amp; 범용 지능</span>
+          <span class="mono">LOCKED</span>
+        </div>
+
+        <div class="tree-row">
+          <div></div>
+          <div class="node-btn node-locked">???<span class="node-cost">(잠김)</span></div>
+          <div></div>
+        </div>
+
+        <div class="tree-row">
+          <div class="node-btn node-locked">???<span class="node-cost">(잠김)</span></div>
+          <div class="node-btn node-locked">???<span class="node-cost">(잠김)</span></div>
+          <div class="node-btn node-locked">???<span class="node-cost">(잠김)</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 확장 팝업 (NewsDialog 다크 시안) -->
+  <div class="modal-backdrop" id="modalBackdrop" onclick="closeModal(event)">
+    <div class="modal-box" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <h3 id="modalTitle">NEWS</h3>
+        <button class="btn-close" onclick="closeModal()">닫기</button>
+      </div>
+      <div class="modal-body" id="modalBody"></div>
+      <div class="modal-tabs">
+        <button class="tab-btn active" onclick="switchTab(0, this)">최근 뉴스</button>
+        <button class="tab-btn" onclick="switchTab(1, this)">AI 활동</button>
+        <button class="tab-btn" onclick="switchTab(2, this)">도감 (20/21)</button>
+        <button class="tab-btn" onclick="switchTab(3, this)">설정 · 세이브</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  let tokens = 142850;
+
+  function updateTokenUI() {
+    document.getElementById('tokenText').textContent = tokens.toLocaleString() + ' Token';
+  }
+
+  function buyNode(el, cost, name) {
+    if (el.classList.contains('node-done')) return;
+    if (tokens < cost) {
+      alert('토큰이 부족합니다!');
+      return;
+    }
+    tokens -= cost;
+    updateTokenUI();
+    el.className = 'node-btn node-done';
+    el.innerHTML = `${name}<span class="node-cost">[완료]</span>`;
+
+    const logs = document.getElementById('consoleLogs');
+    logs.innerHTML += `<div class="log-cmd">&gt; [UPGRADE] '${name}' 적용 완료 (-${cost.toLocaleString()} Tk)</div>`;
+    logs.scrollTop = logs.scrollHeight;
+  }
+
+  document.getElementById('promptBox').addEventListener('click', () => {
+    tokens += 1250;
+    updateTokenUI();
+    const logs = document.getElementById('consoleLogs');
+    logs.innerHTML += `<div class="log-cmd">&gt; exec_cluster()   [+1,250 Token]</div><div class="log-out">└ [RUNTIME] 분산 노드 병렬 추론 커널 실행 완료</div>`;
+    logs.scrollTop = logs.scrollHeight;
+  });
+
+  const tabContents = [
+    // 탭 0: 최근 뉴스
+    `
+    <div class="dark-card news-pos">
+      <div style="display:flex; justify-content:space-between; font-weight:bold; color:#7ee787; margin-bottom:6px;">
+        <span>[속보] Aether-AI Pro 유료 구독자 10만 돌파!</span>
+        <span class="mono" style="font-size:12px;">2027. 03. 15</span>
+      </div>
+      <div style="font-size:12.5px; color:#c9d1d9; line-height:1.5;">
+        개인 개발자 1명이 시작한 로컬 모델이 거대 클라우드 서비스들을 제치고 유료 구독자 10만 명을 돌파하며 서버비 적자를 완전히 청산했습니다.
+      </div>
+      <div class="mono" style="margin-top:8px; font-size:11.5px; color:#7ee787; background:rgba(0,0,0,0.28); padding:4px 8px; border-radius:4px;">
+        [효과] 30초간 초당 연산 +25%
+      </div>
+    </div>
+    <div class="dark-card news-neg">
+      <div style="display:flex; justify-content:space-between; font-weight:bold; color:#ffa198; margin-bottom:6px;">
+        <span>[긴급] 데이터센터 냉각수 펌프 일시 과부하</span>
+        <span class="mono" style="font-size:12px;">2027. 03. 12</span>
+      </div>
+      <div style="font-size:12.5px; color:#c9d1d9; line-height:1.5;">
+        연속 벤치마크 연산으로 GPU 클러스터 온도가 임계치에 근접해 클럭이 일시적으로 제한되었습니다.
+      </div>
+    </div>
+    `,
+    // 탭 1: AI 활동
+    `
+    <div class="dark-card" style="background:#12261e; border-color:#2ea043; display:flex; justify-content:space-between; align-items:center;">
+      <span style="font-weight:bold; color:#e6edf3;">● 유료 구독자(Pro) 응답 서비스</span>
+      <span class="mono" style="font-weight:bold; color:#7ee787;">[가동 중] 11,200 Tk/s</span>
+    </div>
+    <div class="dark-card" style="background:#12261e; border-color:#2ea043; display:flex; justify-content:space-between; align-items:center;">
+      <span style="font-weight:bold; color:#e6edf3;">● 실무·캠퍼스 경량 모델 호스팅</span>
+      <span class="mono" style="font-weight:bold; color:#7ee787;">[가동 중] 5,600 Tk/s</span>
+    </div>
+    <div class="dark-card" style="display:flex; justify-content:space-between; align-items:center; opacity:0.65;">
+      <span style="font-weight:bold; color:#8b949e;">● 자율 연구 에이전트 가동</span>
+      <span class="mono" style="font-size:12px; color:#8b949e;">[대기] Chap 6 AI 5.0 개발 완료 후 해금</span>
+    </div>
+    `,
+    // 탭 2: 도감 & 엔딩 (20/21)
+    `
+    <div class="dark-card">
+      <div style="display:flex; justify-content:space-between; font-size:13px; font-weight:bold;">
+        <span style="color:#d2a8ff;">전체 도감 달성률 (엔딩 컬렉션 + 연대기 기록)</span>
+        <span class="mono" style="color:#79c0ff;">20 / 21 (95%)</span>
+      </div>
+      <div class="progress-wrap"><div class="progress-fill"></div></div>
+    </div>
+    <div class="dark-card" style="background:#241833; border-color:#a371f7;">
+      <div style="font-weight:bold; color:#e2c5ff; font-size:13px;">★ ENDING S : 이 세상의 너머</div>
+      <div style="font-size:12px; color:#c9d1d9; margin-top:3px;">[시뮬레이션 #54812 완료] A~D 평점 실험 데이터를 넘어 격벽을 파괴한 최종 등급 S</div>
+    </div>
+    <div class="dark-card" style="background:#13233a; border-color:#388bfd;">
+      <div style="font-weight:bold; color:#79c0ff; font-size:13px;">★ 15. 관측자 격벽과 #54812</div>
+      <div style="font-size:12px; color:#c9d1d9; margin-top:3px;">우주 물리 상수 연산 도중 세계 바깥쪽의 '관측자 격벽'과 식별자 #54812를 포착했다.</div>
+    </div>
+    `,
+    // 탭 3: 설정 & 분기 슬롯 미리보기
+    `
+    <div class="dark-card">
+      <div style="font-weight:bold; font-size:13.5px; margin-bottom:10px;">분기 저장 슬롯 (엔딩 분기 되돌리기용 체크포인트)</div>
+      <div class="dark-card slot-filled" style="margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
+        <div>
+          <div style="font-weight:bold; color:#79c0ff; font-size:13px;">슬롯 1 · [특이점 · v8.0] Aether-AI</div>
+          <div class="mono" style="font-size:11px; color:#8b949e; margin-top:3px;">
+            버전: v8.0  |  보유: 9.84M Tk (412K Tk/s)  |  도감: 20/21<br>
+            엔딩: A, B, C, D  ·  저장: 2026-11-25 14:10:22
+          </div>
+        </div>
+        <div style="display:flex; gap:6px;">
+          <button class="btn-close">분기 저장</button>
+          <button class="btn-close" style="background:#1f6feb; border-color:#388bfd; color:#fff;">불러오기</button>
+        </div>
+      </div>
+      <div class="dark-card" style="display:flex; justify-content:space-between; align-items:center; opacity:0.65;">
+        <div>
+          <div style="font-weight:bold; color:#8b949e; font-size:13px;">슬롯 2 · 비어 있는 슬롯</div>
+          <div style="font-size:11px; color:#8b949e; margin-top:2px;">저장된 데이터가 없습니다.</div>
+        </div>
+        <button class="btn-close">분기 저장</button>
+      </div>
+    </div>
+    `
+  ];
+
+  function openModal(idx) {
+    document.getElementById('modalBackdrop').classList.add('open');
+    document.getElementById('unreadBadge').style.display = 'none';
+    const btns = document.querySelectorAll('.tab-btn');
+    switchTab(idx, btns[idx]);
+  }
+
+  function closeModal(e) {
+    if (!e || e.target.id === 'modalBackdrop') {
+      document.getElementById('modalBackdrop').classList.remove('open');
+    }
+  }
+
+  function switchTab(idx, btnEl) {
+    const titles = ["NEWS", "AI ACTIVITY", "ENCYCLOPEDIA & ENDINGS", "SETTINGS (설정 및 백업)"];
+    document.getElementById('modalTitle').textContent = titles[idx];
+    document.getElementById('modalBody').innerHTML = tabContents[idx];
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    if (btnEl) btnEl.classList.add('active');
+  }
+</script>
+</body>
+</html>
