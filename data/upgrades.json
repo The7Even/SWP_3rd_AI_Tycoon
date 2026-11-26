@@ -7,7 +7,7 @@
       "col": 2,
       "name": "버퍼 최적화",
       "type": "common",
-      "cost": 1,
+      "cost": 2,
       "req": [],
       "desc": "[튜토리얼] 버퍼링이 제거되어 입력 지연 200ms → 150ms 완화",
       "effects": {
@@ -22,7 +22,7 @@
       "col": 1,
       "name": "키 입력 매핑",
       "type": "active",
-      "cost": 2,
+      "cost": 4,
       "req": [
         "tut_buffer"
       ],
@@ -39,13 +39,13 @@
       "col": 3,
       "name": "기초 PC 조립",
       "type": "passive",
-      "cost": 2,
+      "cost": 4,
       "req": [
         "tut_buffer"
       ],
-      "desc": "[튜토리얼] 기본 개발 PC 세팅, 명령어당 토큰 +1 (2 Tk/Cmd)",
+      "desc": "[튜토리얼] 기본 개발 PC 세팅, 명령어당 토큰 +2 (4 Tk/Cmd)",
       "effects": {
-        "cmd_add": 1,
+        "cmd_add": 2,
         "bench_add": 40,
         "spec_cpu": "Intel i5-12400F (로컬 테스트용)",
         "spec_ram": "DDR4 16GB",
@@ -59,14 +59,14 @@
       "col": 2,
       "name": "AI 개발 착수",
       "type": "story",
-      "cost": 10,
+      "cost": 20,
       "req": [
         "tut_act_key",
         "tut_pas_pc"
       ],
-      "desc": "[Chap 1 시작] 튜토리얼 완료, 명령어당 토큰 +4",
+      "desc": "[Chap 1 시작] 튜토리얼 완료, 명령어당 토큰 +8",
       "effects": {
-        "cmd_add": 4,
+        "cmd_add": 8,
         "bench_add": 100
       },
       "story_event": {
@@ -84,13 +84,13 @@
       "col": 1,
       "name": "중고 RAM 증설",
       "type": "passive",
-      "cost": 35,
+      "cost": 70,
       "req": [
         "ch1_start"
       ],
-      "desc": "[하드웨어/패시브] 초당 토큰 +1, RAM 32GB 교체",
+      "desc": "[하드웨어/패시브] 초당 토큰 +2, RAM 32GB 교체",
       "effects": {
-        "sec_add": 1,
+        "sec_add": 2,
         "bench_add": 150,
         "spec_ram": "DDR4 32GB"
       }
@@ -102,13 +102,13 @@
       "col": 3,
       "name": "캐시 NVMe 사용",
       "type": "passive",
-      "cost": 180,
+      "cost": 360,
       "req": [
         "ch1_start"
       ],
-      "desc": "[하드웨어/패시브] 초당 토큰 +1, 스토리지 1TB 확장",
+      "desc": "[하드웨어/패시브] 초당 토큰 +2, 스토리지 1TB 확장",
       "effects": {
-        "sec_add": 1,
+        "sec_add": 2,
         "bench_add": 200,
         "spec_storage": "NVMe 1TB"
       }
@@ -120,7 +120,7 @@
       "col": 2,
       "name": "사제 쿨러 장착",
       "type": "passive",
-      "cost": 360,
+      "cost": 720,
       "req": [
         "ch1_hw_ram1",
         "ch1_hw_ssd1"
@@ -138,13 +138,13 @@
       "col": 1,
       "name": "CPU 오버클럭 사용",
       "type": "passive",
-      "cost": 560,
+      "cost": 1120,
       "req": [
         "ch1_hw_cooler"
       ],
-      "desc": "[하드웨어/패시브] 초당 토큰 +2",
+      "desc": "[하드웨어/패시브] 초당 토큰 +4",
       "effects": {
-        "sec_add": 2,
+        "sec_add": 4,
         "bench_add": 300,
         "spec_cpu": "Intel i5-12400F (OC 4.8GHz)"
       }
@@ -156,13 +156,13 @@
       "col": 3,
       "name": "중고 GTX 1660 구입",
       "type": "passive",
-      "cost": 720,
+      "cost": 1440,
       "req": [
         "ch1_hw_cooler"
       ],
-      "desc": "[하드웨어/패시브] 초당 토큰 +3, 외장 GPU 첫 장착",
+      "desc": "[하드웨어/패시브] 초당 토큰 +6, 외장 GPU 첫 장착",
       "effects": {
-        "sec_add": 3,
+        "sec_add": 6,
         "bench_add": 600,
         "spec_gpu": "GTX 1660 Super 6GB"
       }
@@ -174,15 +174,15 @@
       "col": 2,
       "name": "정격 750W 파워",
       "type": "passive",
-      "cost": 1120,
+      "cost": 2240,
       "req": [
         "ch1_hw_cpu1",
         "ch1_hw_gpu0"
       ],
-      "desc": "[하드웨어/액티브] 명령어당 토큰 +6, 초당 토큰 +3",
+      "desc": "[하드웨어/액티브] 명령어당 토큰 +12, 초당 토큰 +6",
       "effects": {
-        "cmd_add": 6,
-        "sec_add": 3,
+        "cmd_add": 12,
+        "sec_add": 6,
         "bench_add": 400
       }
     },
@@ -193,13 +193,13 @@
       "col": 2,
       "name": "기초 환경 구축",
       "type": "story",
-      "cost": 1800,
+      "cost": 3600,
       "req": [
         "ch1_hw_psu"
       ],
-      "desc": "[Chap 1 마일스톤] 명령어당 토큰 +7, 다음 챕터 해금",
+      "desc": "[Chap 1 마일스톤] 명령어당 토큰 +14, 다음 챕터 해금",
       "effects": {
-        "cmd_add": 7,
+        "cmd_add": 14,
         "bench_add": 800
       },
       "story_event": {
@@ -217,13 +217,13 @@
       "col": 2,
       "name": "딥러닝 도입",
       "type": "story",
-      "cost": 3500,
+      "cost": 7000,
       "req": [
         "ch1_end"
       ],
-      "desc": "[Chap 2 시작] 소프트웨어 업그레이드 해금, 명령어당 토큰 +9",
+      "desc": "[Chap 2 시작] 소프트웨어 업그레이드 해금, 명령어당 토큰 +18",
       "effects": {
-        "cmd_add": 9,
+        "cmd_add": 18,
         "bench_add": 1000
       },
       "story_event": {
@@ -241,13 +241,13 @@
       "col": 1,
       "name": "컴퓨터 연산 가속",
       "type": "active",
-      "cost": 4750,
+      "cost": 9500,
       "req": [
         "ch2_start"
       ],
-      "desc": "[소프트웨어/액티브] 명령어당 토큰 +14",
+      "desc": "[소프트웨어/액티브] 명령어당 토큰 +28",
       "effects": {
-        "cmd_add": 14,
+        "cmd_add": 28,
         "bench_add": 1100
       }
     },
@@ -258,13 +258,13 @@
       "col": 3,
       "name": "RTX 2070 구입",
       "type": "passive",
-      "cost": 5250,
+      "cost": 10500,
       "req": [
         "ch2_start"
       ],
-      "desc": "[하드웨어/패시브] 초당 토큰 +10, 도감 해금, GPU 업그레이드",
+      "desc": "[하드웨어/패시브] 초당 토큰 +20, 도감 해금, GPU 업그레이드",
       "effects": {
-        "sec_add": 10,
+        "sec_add": 20,
         "bench_add": 2500,
         "spec_gpu": "RTX 2070 8GB",
         "unlock_dex": "col_rtx2070"
@@ -277,7 +277,7 @@
       "col": 1,
       "name": "말뭉치 크롤러 사용",
       "type": "active",
-      "cost": 7250,
+      "cost": 14500,
       "req": [
         "ch2_sw_tensor"
       ],
@@ -294,13 +294,13 @@
       "col": 3,
       "name": "DDR4 32GB 구입",
       "type": "passive",
-      "cost": 7750,
+      "cost": 15500,
       "req": [
         "ch2_hw_rtx2070"
       ],
-      "desc": "[하드웨어/패시브] 초당 토큰 +15, RAM 업그레이드",
+      "desc": "[하드웨어/패시브] 초당 토큰 +30, RAM 업그레이드",
       "effects": {
-        "sec_add": 15,
+        "sec_add": 30,
         "bench_add": 1800,
         "spec_ram": "DDR4 16GB×2"
       }
@@ -312,13 +312,13 @@
       "col": 1,
       "name": "토크나이저 사용",
       "type": "active",
-      "cost": 10750,
+      "cost": 21500,
       "req": [
         "ch2_sw_crawler"
       ],
-      "desc": "[소프트웨어/액티브] 명령어당 토큰 +25, 쿨다운 20ms 단축",
+      "desc": "[소프트웨어/액티브] 명령어당 토큰 +50, 쿨다운 20ms 단축",
       "effects": {
-        "cmd_add": 25,
+        "cmd_add": 50,
         "cooldown_add": -20,
         "bench_add": 2000
       }
@@ -330,13 +330,13 @@
       "col": 3,
       "name": "Ryzen 7 5800X 구입",
       "type": "passive",
-      "cost": 11250,
+      "cost": 22500,
       "req": [
         "ch2_hw_ram64"
       ],
-      "desc": "[하드웨어/패시브] 초당 토큰 +21, CPU 업그레이드",
+      "desc": "[하드웨어/패시브] 초당 토큰 +42, CPU 업그레이드",
       "effects": {
-        "sec_add": 21,
+        "sec_add": 42,
         "bench_add": 2600,
         "spec_cpu": "AMD Ryzen 7 5800X3D"
       }
@@ -348,14 +348,14 @@
       "col": 2,
       "name": "어텐션 레이어 도입",
       "type": "active",
-      "cost": 15000,
+      "cost": 30000,
       "req": [
         "ch2_sw_tokenizer",
         "ch2_hw_cpu2"
       ],
-      "desc": "[소프트웨어/액티브] 명령어당 토큰 +38",
+      "desc": "[소프트웨어/액티브] 명령어당 토큰 +76",
       "effects": {
-        "cmd_add": 38,
+        "cmd_add": 76,
         "bench_add": 2800
       }
     },
@@ -366,7 +366,7 @@
       "col": 2,
       "name": "프로토타입 완성",
       "type": "story",
-      "cost": 20500,
+      "cost": 41000,
       "req": [
         "ch2_sw_attn"
       ],
@@ -392,13 +392,13 @@
       "col": 2,
       "name": "코드-학습 연계 시작",
       "type": "story",
-      "cost": 27000,
+      "cost": 54000,
       "req": [
         "ch2_end"
       ],
-      "desc": "[Chap 3 시작] 중립 업그레이드 해금, 명령어당 토큰 +50",
+      "desc": "[Chap 3 시작] 중립 업그레이드 해금, 명령어당 토큰 +100",
       "effects": {
-        "cmd_add": 50,
+        "cmd_add": 100,
         "bench_add": 4000
       },
       "story_event": {
@@ -416,14 +416,14 @@
       "col": 2,
       "name": "오픈소스 공개",
       "type": "common",
-      "cost": 33500,
+      "cost": 67000,
       "req": [
         "ch3_start"
       ],
-      "desc": "[중립] 명령어당 토큰 +60, 초당 토큰 +30",
+      "desc": "[중립] 명령어당 토큰 +120, 초당 토큰 +60",
       "effects": {
-        "cmd_add": 60,
-        "sec_add": 30,
+        "cmd_add": 120,
+        "sec_add": 60,
         "bench_add": 5000
       }
     },
@@ -434,13 +434,13 @@
       "col": 1,
       "name": "JIT 컴파일러 도입",
       "type": "active",
-      "cost": 40500,
+      "cost": 81000,
       "req": [
         "ch3_neu_git"
       ],
-      "desc": "[소프트웨어/액티브] 명령어당 토큰 +80",
+      "desc": "[소프트웨어/액티브] 명령어당 토큰 +160",
       "effects": {
-        "cmd_add": 80,
+        "cmd_add": 160,
         "bench_add": 4500
       }
     },
@@ -451,13 +451,13 @@
       "col": 3,
       "name": "RTX 3080 교체",
       "type": "passive",
-      "cost": 42000,
+      "cost": 84000,
       "req": [
         "ch3_neu_git"
       ],
-      "desc": "[하드웨어/패시브] 초당 토큰 +55, GPU 업그레이드",
+      "desc": "[하드웨어/패시브] 초당 토큰 +220, GPU 업그레이드",
       "effects": {
-        "sec_add": 110,
+        "sec_add": 220,
         "bench_add": 6000,
         "spec_gpu": "RTX 3080 12GB"
       }
@@ -469,7 +469,7 @@
       "col": 1,
       "name": "INT8 양자화",
       "type": "active",
-      "cost": 53500,
+      "cost": 107000,
       "req": [
         "ch3_sw_jit"
       ],
@@ -486,13 +486,13 @@
       "col": 3,
       "name": "DDR5 64GB 교체",
       "type": "passive",
-      "cost": 55500,
+      "cost": 111000,
       "req": [
         "ch3_hw_dual3060"
       ],
-      "desc": "[하드웨어/패시브] 초당 토큰 +80, RAM 업그레이드",
+      "desc": "[하드웨어/패시브] 초당 토큰 +160, RAM 업그레이드",
       "effects": {
-        "sec_add": 80,
+        "sec_add": 160,
         "bench_add": 8000,
         "spec_ram": "DDR5 64GB (32×2GB)"
       }
@@ -504,7 +504,7 @@
       "col": 2,
       "name": "웹 데모 배포",
       "type": "common",
-      "cost": 64500,
+      "cost": 129000,
       "req": [
         "ch3_sw_quant",
         "ch3_hw_ddr5"
@@ -522,7 +522,7 @@
       "col": 2,
       "name": "AI 1.0 공개",
       "type": "story",
-      "cost": 77000,
+      "cost": 154000,
       "req": [
         "ch3_neu_demo"
       ],
@@ -547,13 +547,13 @@
       "col": 2,
       "name": "구조 전면 개편",
       "type": "story",
-      "cost": 100000,
+      "cost": 200000,
       "req": [
         "ch3_end"
       ],
-      "desc": "[Chap 4 시작] 쿨다운 20ms 단축, 명령어당 토큰 +200",
+      "desc": "[Chap 4 시작] 쿨다운 20ms 단축, 명령어당 토큰 +400",
       "effects": {
-        "cmd_add": 200,
+        "cmd_add": 400,
         "cooldown_add": -20,
         "bench_add": 12000
       },
@@ -572,13 +572,13 @@
       "col": 1,
       "name": "FlashAttention 알고리즘 도입",
       "type": "active",
-      "cost": 130000,
+      "cost": 260000,
       "req": [
         "ch4_start"
       ],
-      "desc": "[소프트웨어/액티브] 명령어당 토큰 +300",
+      "desc": "[소프트웨어/액티브] 명령어당 토큰 +600",
       "effects": {
-        "cmd_add": 300,
+        "cmd_add": 600,
         "bench_add": 14000
       }
     },
@@ -589,13 +589,13 @@
       "col": 3,
       "name": "RTX 4090 구입",
       "type": "passive",
-      "cost": 140000,
+      "cost": 280000,
       "req": [
         "ch4_start"
       ],
-      "desc": "[하드웨어/패시브] 초당 토큰 +275, GPU 업그레이드",
+      "desc": "[하드웨어/패시브] 초당 토큰 +550, GPU 업그레이드",
       "effects": {
-        "sec_add": 275,
+        "sec_add": 550,
         "bench_add": 25000,
         "spec_gpu": "RTX 4090 24GB"
       }
@@ -607,15 +607,15 @@
       "col": 2,
       "name": "벤치마크 챌린지 시작",
       "type": "common",
-      "cost": 165000,
+      "cost": 330000,
       "req": [
         "ch4_sw_flash",
         "ch4_hw_rtx4090"
       ],
-      "desc": "[중립] 명령어당 토큰 + 250, 초당 토큰 +125",
+      "desc": "[중립] 명령어당 토큰 +500, 초당 토큰 +250",
       "effects": {
-        "cmd_add": 250,
-        "sec_add": 125,
+        "cmd_add": 500,
+        "sec_add": 250,
         "bench_add": 18000
       }
     },
@@ -626,7 +626,7 @@
       "col": 1,
       "name": "RLHF 정렬 학습 도입",
       "type": "active",
-      "cost": 200000,
+      "cost": 400000,
       "req": [
         "ch4_neu_bench"
       ],
@@ -643,13 +643,13 @@
       "col": 3,
       "name": "Ryzen 9 7950X 구입",
       "type": "passive",
-      "cost": 210000,
+      "cost": 420000,
       "req": [
         "ch4_neu_bench"
       ],
-      "desc": "[하드웨어/패시브] 초당 토큰 +450, CPU 업그레이드",
+      "desc": "[하드웨어/패시브] 초당 토큰 +900, CPU 업그레이드",
       "effects": {
-        "sec_add": 450,
+        "sec_add": 900,
         "bench_add": 28000,
         "spec_cpu": "AMD Ryzen 9 7950X"
       }
@@ -661,7 +661,7 @@
       "col": 2,
       "name": "커뮤니티 바이럴 진행",
       "type": "common",
-      "cost": 240000,
+      "cost": 480000,
       "req": [
         "ch4_sw_rlhf",
         "ch4_hw_ryzen9"
@@ -679,7 +679,7 @@
       "col": 2,
       "name": "AI 2.0 릴리즈",
       "type": "story",
-      "cost": 290000,
+      "cost": 580000,
       "req": [
         "ch4_neu_community"
       ],
@@ -706,14 +706,14 @@
       "col": 2,
       "name": "상용화 구조 확장",
       "type": "story",
-      "cost": 375000,
+      "cost": 750000,
       "req": [
         "ch4_end"
       ],
-      "desc": "[Chap 5 시작] 명령어당 토큰 +1.100K, 초당 토큰 +625",
+      "desc": "[Chap 5 시작] 명령어당 토큰 +2.200K, 초당 토큰 +1.250K",
       "effects": {
-        "cmd_add": 1100,
-        "sec_add": 625,
+        "cmd_add": 2200,
+        "sec_add": 1250,
         "bench_add": 45000
       },
       "story_event": {
@@ -731,13 +731,13 @@
       "col": 1,
       "name": "전문가 혼합 MoE 도입",
       "type": "active",
-      "cost": 588000,
+      "cost": 1176000,
       "req": [
         "ch5_start"
       ],
-      "desc": "[소프트웨어/액티브] 명령어당 토큰 +1.750K",
+      "desc": "[소프트웨어/액티브] 명령어당 토큰 +3.500K",
       "effects": {
-        "cmd_add": 1750,
+        "cmd_add": 3500,
         "bench_add": 50000
       }
     },
@@ -748,13 +748,13 @@
       "col": 3,
       "name": "NVIDIA A100 구입",
       "type": "passive",
-      "cost": 735000,
+      "cost": 1470000,
       "req": [
         "ch5_start"
       ],
-      "desc": "[하드웨어/패시브] 초당 토큰 +1.600K, GPU 업그레이드",
+      "desc": "[하드웨어/패시브] 초당 토큰 +3.200K, GPU 업그레이드",
       "effects": {
-        "sec_add": 1600,
+        "sec_add": 3200,
         "bench_add": 80000,
         "spec_gpu": "NVIDIA A100 80GB PCIe"
       }
@@ -766,7 +766,7 @@
       "col": 2,
       "name": "API 게이트웨이 사용",
       "type": "common",
-      "cost": 875000,
+      "cost": 1750000,
       "req": [
         "ch5_sw_moe",
         "ch5_hw_a100"
@@ -785,7 +785,7 @@
       "col": 2,
       "name": "AI 3.0 Pro 출시",
       "type": "story",
-      "cost": 1760000,
+      "cost": 3520000,
       "req": [
         "ch5_neu_api"
       ],
@@ -817,7 +817,7 @@
       "col": 1,
       "name": "추측적 디코딩 적용",
       "type": "active",
-      "cost": 1900000,
+      "cost": 3800000,
       "req": [
         "ch5_mid"
       ],
@@ -835,13 +835,13 @@
       "col": 3,
       "name": "NVMe RAID 8TB 구입",
       "type": "passive",
-      "cost": 2050000,
+      "cost": 4100000,
       "req": [
         "ch5_mid"
       ],
-      "desc": "[하드웨어/패시브] 초당 토큰 +3.00K, 스토리지 업그레이드",
+      "desc": "[하드웨어/패시브] 초당 토큰 +6.00K, 스토리지 업그레이드",
       "effects": {
-        "sec_add": 3000,
+        "sec_add": 6000,
         "bench_add": 85000,
         "spec_storage": "NVMe Gen5 RAID 8TB"
       }
@@ -853,14 +853,14 @@
       "col": 2,
       "name": "구독 결제 연동",
       "type": "common",
-      "cost": 2430000,
+      "cost": 4860000,
       "req": [
         "ch5_sw_spec",
         "ch5_hw_nvme_raid"
       ],
-      "desc": "[중립] 초당 토큰 +4.50K",
+      "desc": "[중립] 초당 토큰 +9.00K",
       "effects": {
-        "sec_add": 4500,
+        "sec_add": 9000,
         "bench_add": 75000
       }
     },
@@ -871,7 +871,7 @@
       "col": 2,
       "name": "AI 4.0 교육 채택",
       "type": "story",
-      "cost": 3160000,
+      "cost": 6320000,
       "req": [
         "ch5_neu_billing"
       ],
@@ -896,7 +896,7 @@
       "col": 1,
       "name": "지식 그래프 RAG 도입",
       "type": "active",
-      "cost": 3340000,
+      "cost": 6680000,
       "req": [
         "ch6_start"
       ],
@@ -913,13 +913,13 @@
       "col": 3,
       "name": "H100 클러스터 구입",
       "type": "passive",
-      "cost": 3600000,
+      "cost": 7200000,
       "req": [
         "ch6_start"
       ],
-      "desc": "[하드웨어/패시브] 초당 토큰 +7.00K, GPU 업그레이드",
+      "desc": "[하드웨어/패시브] 초당 토큰 +14.00K, GPU 업그레이드",
       "effects": {
-        "sec_add": 7000,
+        "sec_add": 14000,
         "bench_add": 250000,
         "spec_gpu": "NVIDIA H100 SXM5 x8"
       }
@@ -931,14 +931,14 @@
       "col": 2,
       "name": "장문 컨텍스트 적용",
       "type": "common",
-      "cost": 4520000,
+      "cost": 9040000,
       "req": [
         "ch6_sw_rag",
         "ch6_hw_h100"
       ],
-      "desc": "1M 토큰 컨텍스트 처리, 명령어당 +6.00K",
+      "desc": "1M 토큰 컨텍스트 처리, 명령어당 +12.00K",
       "effects": {
-        "cmd_add": 6000,
+        "cmd_add": 12000,
         "bench_add": 150000
       }
     },
@@ -949,13 +949,13 @@
       "col": 1,
       "name": "Triton 커널 도입",
       "type": "active",
-      "cost": 5440000,
+      "cost": 10880000,
       "req": [
         "ch6_LF_cxt"
       ],
-      "desc": "[소프트웨어/액티브] 명령어당 토큰 +10.00K",
+      "desc": "[소프트웨어/액티브] 명령어당 토큰 +20.00K",
       "effects": {
-        "cmd_add": 10000,
+        "cmd_add": 20000,
         "bench_add": 320000
       }
     },
@@ -966,13 +966,13 @@
       "col": 3,
       "name": "EPYC 듀얼 서버 사용",
       "type": "passive",
-      "cost": 5760000,
+      "cost": 11520000,
       "req": [
         "ch6_LF_cxt"
       ],
-      "desc": "[하드웨어/패시브] 초당 토큰 +10.00K, 서버용 장비 업그레이드",
+      "desc": "[하드웨어/패시브] 초당 토큰 +20.00K, 서버용 장비 업그레이드",
       "effects": {
-        "sec_add": 10000,
+        "sec_add": 20000,
         "bench_add": 400000,
         "spec_cpu": "Dual AMD EPYC 9654",
         "spec_ram": "DDR5 1TB ECC"
@@ -985,7 +985,7 @@
       "col": 2,
       "name": "난제 자동 증명 진행",
       "type": "common",
-      "cost": 6720000,
+      "cost": 13440000,
       "req": [
         "ch6_sw_triton",
         "ch6_hw_epyc"
@@ -1004,7 +1004,7 @@
       "col": 2,
       "name": "AI 5.0 개발 완료",
       "type": "story",
-      "cost": 8400000,
+      "cost": 16800000,
       "req": [
         "ch6_neu_research"
       ],
@@ -1037,13 +1037,13 @@
       "col": 2,
       "name": "국가 기간망 연동",
       "type": "common",
-      "cost": 11600000,
+      "cost": 23200000,
       "req": [
         "ch6_end"
       ],
-      "desc": "[Chap 7 진입] 초당 토큰 +30.00K",
+      "desc": "[Chap 7 진입] 초당 토큰 +60.00K",
       "effects": {
-        "sec_add": 30000,
+        "sec_add": 60000,
         "bench_add": 750000
       }
     },
@@ -1054,7 +1054,7 @@
       "col": 1,
       "name": "자가 코드 수정 개시",
       "type": "active",
-      "cost": 15200000,
+      "cost": 30400000,
       "req": [
         "ch7_start"
       ],
@@ -1072,13 +1072,13 @@
       "col": 3,
       "name": "전용 데이터센터 증축",
       "type": "passive",
-      "cost": 20000000,
+      "cost": 40000000,
       "req": [
         "ch7_start"
       ],
-      "desc": "[하드웨어/패시브] 초당 토큰 +50.00K, GPU 업그레이드",
+      "desc": "[하드웨어/패시브] 초당 토큰 +100.00K, GPU 업그레이드",
       "effects": {
-        "sec_add": 50000,
+        "sec_add": 100000,
         "bench_add": 1200000,
         "spec_gpu": "NVIDIA B200 SuperPOD",
         "spec_storage": "Exabyte All-Flash"
@@ -1091,7 +1091,7 @@
       "col": 2,
       "name": "AI 6.0 정부 채택",
       "type": "story",
-      "cost": 28000000,
+      "cost": 56000000,
       "req": [
         "ch7_sw_selfcode",
         "ch7_hw_datacenter"
@@ -1117,7 +1117,7 @@
       "col": 1,
       "name": "메타 인지 루프",
       "type": "active",
-      "cost": 38000000,
+      "cost": 76000000,
       "req": [
         "ch7_mid"
       ],
@@ -1134,13 +1134,13 @@
       "col": 3,
       "name": "양자 가속 코어 도입",
       "type": "passive",
-      "cost": 42000000,
+      "cost": 84000000,
       "req": [
         "ch7_mid"
       ],
-      "desc": "[하드웨어/패시브] 초당 토큰 +75.00K, CPU 업그레이드",
+      "desc": "[하드웨어/패시브] 초당 토큰 +1.500M, CPU 업그레이드",
       "effects": {
-        "sec_add": 750000,
+        "sec_add": 1500000,
         "bench_add": 2500000,
         "spec_cpu": "Quantum-Classical Hybrid Core"
       }
@@ -1152,7 +1152,7 @@
       "col": 2,
       "name": "글로벌 백본 동기화",
       "type": "common",
-      "cost": 100000000,
+      "cost": 200000000,
       "req": [
         "ch7_sw_meta",
         "ch7_hw_quantum"
@@ -1170,7 +1170,7 @@
       "col": 2,
       "name": "AI 7.0 임계 돌파",
       "type": "story",
-      "cost": 600000000,
+      "cost": 1200000000,
       "req": [
         "ch7_neu_global"
       ],
@@ -1195,7 +1195,7 @@
       "col": 2,
       "name": "특이점 도달",
       "type": "story",
-      "cost": 1500000000,
+      "cost": 3000000000,
       "req": [
         "ch7_end"
       ],
