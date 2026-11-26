@@ -252,7 +252,7 @@
       }
     },
     {
-      "id": "ch2_hw_rtx3060",
+      "id": "ch2_hw_rtx2070",
       "chapter": 2,
       "row": 10,
       "col": 3,
@@ -266,7 +266,7 @@
       "effects": {
         "sec_add": 40,
         "bench_add": 2500,
-        "spec_gpu": "RTX 3060 8GB",
+        "spec_gpu": "RTX 2070 8GB",
         "unlock_dex": "col_rtx2070"
       }
     },
@@ -296,7 +296,7 @@
       "type": "passive",
       "cost": 1550,
       "req": [
-        "ch2_hw_rtx3060"
+        "ch2_hw_rtx2070"
       ],
       "desc": "[하드웨어/패시브] 초당 토큰 +60, RAM 업그레이드",
       "effects": {
