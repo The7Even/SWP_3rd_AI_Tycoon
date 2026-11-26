@@ -1152,7 +1152,7 @@
       "col": 2,
       "name": "글로벌 백본 동기화",
       "type": "common",
-      "cost": 49000000,
+      "cost": 100000000,
       "req": [
         "ch7_sw_meta",
         "ch7_hw_quantum"
@@ -1170,7 +1170,7 @@
       "col": 2,
       "name": "AI 7.0 임계 돌파",
       "type": "story",
-      "cost": 65000000,
+      "cost": 600000000,
       "req": [
         "ch7_neu_global"
       ],
