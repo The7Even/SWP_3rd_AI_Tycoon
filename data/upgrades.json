@@ -88,9 +88,9 @@
       "req": [
         "ch1_start"
       ],
-      "desc": "[하드웨어/패시브] 초당 토큰 +2, RAM 32GB 교체",
+      "desc": "[하드웨어/패시브] 초당 토큰 +1, RAM 32GB 교체",
       "effects": {
-        "sec_add": 2,
+        "sec_add": 1,
         "bench_add": 150,
         "spec_ram": "DDR4 32GB"
       }
@@ -106,9 +106,9 @@
       "req": [
         "ch1_start"
       ],
-      "desc": "[하드웨어/패시브] 초당 토큰 +3, 스토리지 1TB 확장",
+      "desc": "[하드웨어/패시브] 초당 토큰 +2, 스토리지 1TB 확장",
       "effects": {
-        "sec_add": 3,
+        "sec_add": 2,
         "bench_add": 200,
         "spec_storage": "NVMe 1TB"
       }
@@ -142,9 +142,9 @@
       "req": [
         "ch1_hw_cooler"
       ],
-      "desc": "[하드웨어/패시브] 초당 토큰 +6",
+      "desc": "[하드웨어/패시브] 초당 토큰 +3",
       "effects": {
-        "sec_add": 6,
+        "sec_add": 3,
         "bench_add": 300,
         "spec_cpu": "Intel i5-12400F (OC 4.8GHz)"
       }
@@ -160,9 +160,9 @@
       "req": [
         "ch1_hw_cooler"
       ],
-      "desc": "[하드웨어/패시브] 초당 토큰 +10, 외장 GPU 첫 장착",
+      "desc": "[하드웨어/패시브] 초당 토큰 +5, 외장 GPU 첫 장착",
       "effects": {
-        "sec_add": 10,
+        "sec_add": 5,
         "bench_add": 600,
         "spec_gpu": "GTX 1660 Super 6GB"
       }
@@ -179,10 +179,10 @@
         "ch1_hw_cpu1",
         "ch1_hw_gpu0"
       ],
-      "desc": "[하드웨어/액티브] 명령어당 토큰 +8, 초당 토큰 +10",
+      "desc": "[하드웨어/액티브] 명령어당 토큰 +8, 초당 토큰 +5",
       "effects": {
         "cmd_add": 8,
-        "sec_add": 10,
+        "sec_add": 5,
         "bench_add": 400
       }
     },
@@ -262,9 +262,9 @@
       "req": [
         "ch2_start"
       ],
-      "desc": "[하드웨어/패시브] 초당 토큰 +40, 도감 해금, GPU 업그레이드",
+      "desc": "[하드웨어/패시브] 초당 토큰 +20, 도감 해금, GPU 업그레이드",
       "effects": {
-        "sec_add": 40,
+        "sec_add": 20,
         "bench_add": 2500,
         "spec_gpu": "RTX 2070 8GB",
         "unlock_dex": "col_rtx2070"
@@ -298,9 +298,9 @@
       "req": [
         "ch2_hw_rtx2070"
       ],
-      "desc": "[하드웨어/패시브] 초당 토큰 +60, RAM 업그레이드",
+      "desc": "[하드웨어/패시브] 초당 토큰 +30, RAM 업그레이드",
       "effects": {
-        "sec_add": 60,
+        "sec_add": 30,
         "bench_add": 1800,
         "spec_ram": "DDR4 16GB×2"
       }
@@ -334,9 +334,9 @@
       "req": [
         "ch2_hw_ram64"
       ],
-      "desc": "[하드웨어/패시브] 초당 토큰 +85, CPU 업그레이드",
+      "desc": "[하드웨어/패시브] 초당 토큰 +43, CPU 업그레이드",
       "effects": {
-        "sec_add": 85,
+        "sec_add": 43,
         "bench_add": 2600,
         "spec_cpu": "AMD Ryzen 7 5800X3D"
       }
@@ -420,10 +420,10 @@
       "req": [
         "ch3_start"
       ],
-      "desc": "[중립] 명령어당/초당 토큰 +120",
+      "desc": "[중립] 명령어당 토큰 +120, 초당 토큰 +60",
       "effects": {
         "cmd_add": 120,
-        "sec_add": 120,
+        "sec_add": 60,
         "bench_add": 5000
       }
     },
@@ -455,9 +455,9 @@
       "req": [
         "ch3_neu_git"
       ],
-      "desc": "[하드웨어/패시브] 초당 토큰 +220, GPU 업그레이드",
+      "desc": "[하드웨어/패시브] 초당 토큰 +110, GPU 업그레이드",
       "effects": {
-        "sec_add": 220,
+        "sec_add": 110,
         "bench_add": 6000,
         "spec_gpu": "RTX 3080 12GB"
       }
@@ -490,9 +490,9 @@
       "req": [
         "ch3_hw_dual3060"
       ],
-      "desc": "[하드웨어/패시브] 초당 토큰 +350, RAM 업그레이드",
+      "desc": "[하드웨어/패시브] 초당 토큰 +175, RAM 업그레이드",
       "effects": {
-        "sec_add": 350,
+        "sec_add": 175,
         "bench_add": 8000,
         "spec_ram": "DDR5 64GB (32×2GB)"
       }
@@ -593,9 +593,9 @@
       "req": [
         "ch4_start"
       ],
-      "desc": "[하드웨어/패시브] 초당 토큰 +1.100K, GPU 업그레이드",
+      "desc": "[하드웨어/패시브] 초당 토큰 +550, GPU 업그레이드",
       "effects": {
-        "sec_add": 1100,
+        "sec_add": 550,
         "bench_add": 25000,
         "spec_gpu": "RTX 4090 24GB"
       }
@@ -612,10 +612,10 @@
         "ch4_sw_flash",
         "ch4_hw_rtx4090"
       ],
-      "desc": "[중립] 명령어당/초당 토큰 +500",
+      "desc": "[중립] 명령어당 토큰 + 500, 초당 토큰 +250",
       "effects": {
         "cmd_add": 500,
-        "sec_add": 500,
+        "sec_add": 250,
         "bench_add": 18000
       }
     },
@@ -647,9 +647,9 @@
       "req": [
         "ch4_neu_bench"
       ],
-      "desc": "[하드웨어/패시브] 초당 토큰 +1.800K, CPU 업그레이드",
+      "desc": "[하드웨어/패시브] 초당 토큰 +900, CPU 업그레이드",
       "effects": {
-        "sec_add": 1800,
+        "sec_add": 900,
         "bench_add": 28000,
         "spec_cpu": "AMD Ryzen 9 7950X"
       }
@@ -710,10 +710,10 @@
       "req": [
         "ch4_end"
       ],
-      "desc": "[Chap 5 시작] 명령어당 토큰 +2.200K, 초당 토큰 +2.500K",
+      "desc": "[Chap 5 시작] 명령어당 토큰 +2.200K, 초당 토큰 +1.250K",
       "effects": {
         "cmd_add": 2200,
-        "sec_add": 2500,
+        "sec_add": 1250,
         "bench_add": 45000
       },
       "story_event": {
@@ -752,9 +752,9 @@
       "req": [
         "ch5_start"
       ],
-      "desc": "[하드웨어/패시브] 초당 토큰 +6.500K, GPU 업그레이드",
+      "desc": "[하드웨어/패시브] 초당 토큰 +3.250K, GPU 업그레이드",
       "effects": {
-        "sec_add": 6500,
+        "sec_add": 3250,
         "bench_add": 80000,
         "spec_gpu": "NVIDIA A100 80GB PCIe"
       }
@@ -789,7 +789,7 @@
       "req": [
         "ch5_neu_api"
       ],
-      "desc": "[Chap 5 마일스톤] 유료 플레이어 활동 해금, 전체 효율 1.5배",
+      "desc": "[Chap 5 마일스톤] 유료 플레이어 활동 해금, 명령어당/초당 토큰 1.5배",
       "effects": {
         "cmd_mul": 1.5,
         "sec_mul": 1.5,
@@ -839,9 +839,9 @@
       "req": [
         "ch5_mid"
       ],
-      "desc": "[하드웨어/패시브] 초당 토큰 +11.00K, 스토리지 업그레이드",
+      "desc": "[하드웨어/패시브] 초당 토큰 +6.00K, 스토리지 업그레이드",
       "effects": {
-        "sec_add": 11000,
+        "sec_add": 6000,
         "bench_add": 85000,
         "spec_storage": "NVMe Gen5 RAID 8TB"
       }
@@ -858,7 +858,7 @@
         "ch5_sw_spec",
         "ch5_hw_nvme_raid"
       ],
-      "desc": "[중립] 초당 토큰 +9.000K",
+      "desc": "[중립] 초당 토큰 +9.00K",
       "effects": {
         "sec_add": 9000,
         "bench_add": 75000
@@ -917,9 +917,9 @@
       "req": [
         "ch6_start"
       ],
-      "desc": "[하드웨어/패시브] 초당 토큰 +45.00K, GPU 업그레이드",
+      "desc": "[하드웨어/패시브] 초당 토큰 +20.00K, GPU 업그레이드",
       "effects": {
-        "sec_add": 45000,
+        "sec_add": 20000,
         "bench_add": 250000,
         "spec_gpu": "NVIDIA H100 SXM5 x8"
       }
@@ -970,9 +970,9 @@
       "req": [
         "ch6_LF_cxt"
       ],
-      "desc": "[하드웨어/패시브] 초당 토큰 +95.00K, 서버용 장비 업그레이드",
+      "desc": "[하드웨어/패시브] 초당 토큰 +50.00K, 서버용 장비 업그레이드",
       "effects": {
-        "sec_add": 95000,
+        "sec_add": 50000,
         "bench_add": 400000,
         "spec_cpu": "Dual AMD EPYC 9654",
         "spec_ram": "DDR5 1TB ECC"
@@ -1041,9 +1041,9 @@
       "req": [
         "ch6_end"
       ],
-      "desc": "[Chap 7 진입] 초당 토큰 +250.0K",
+      "desc": "[Chap 7 진입] 초당 토큰 +150.0K",
       "effects": {
-        "sec_add": 250000,
+        "sec_add": 150000,
         "bench_add": 750000
       }
     },
@@ -1076,9 +1076,9 @@
       "req": [
         "ch7_start"
       ],
-      "desc": "[하드웨어/패시브] 초당 토큰 +550.0K, GPU 업그레이드",
+      "desc": "[하드웨어/패시브] 초당 토큰 +300.0K, GPU 업그레이드",
       "effects": {
-        "sec_add": 550000,
+        "sec_add": 300000,
         "bench_add": 1200000,
         "spec_gpu": "NVIDIA B200 SuperPOD",
         "spec_storage": "Exabyte All-Flash"
@@ -1138,9 +1138,9 @@
       "req": [
         "ch7_mid"
       ],
-      "desc": "[하드웨어/패시브] 초당 토큰 +1.500M, CPU 업그레이드",
+      "desc": "[하드웨어/패시브] 초당 토큰 +1.000M, CPU 업그레이드",
       "effects": {
-        "sec_add": 1500000,
+        "sec_add": 1000000,
         "bench_add": 2500000,
         "spec_cpu": "Quantum-Classical Hybrid Core"
       }
