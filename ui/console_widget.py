@@ -97,9 +97,19 @@ class BufferHarvestBar(QPushButton):
             painter.setBrush(bar_color)
             painter.drawRoundedRect(fill_rect, 7, 7)
 
-        if is_full:
+        charge_eff = self.game_state.get_buffer_charge_efficiency()
+        is_halted = (charge_eff <= 0.0)
+        is_throttled = (0.0 < charge_eff < 1.0)
+
+        if is_halted:
+            border_color = QColor("#f85149")
+            border_w = 2.0
+        elif is_full:
             border_color = QColor("#3fb950")
             border_w = 2.0
+        elif is_throttled:
+            border_color = QColor("#d29922")
+            border_w = 1.6
         elif is_sweet:
             border_color = QColor("#58a6ff")
             border_w = 1.8
@@ -124,8 +134,18 @@ class BufferHarvestBar(QPushButton):
         font_main.setBold(True)
         painter.setFont(font_main)
 
-        left_text = f"GRADIENT BUFFER [{pct_str}]  ·  {buf_str} Tk   |   SYNC {chain_stars}"
-        painter.setPen(QColor("#e6edf3"))
+        if is_halted:
+            speed_tag = "HALTED 0%"
+            left_color = QColor("#ffa198")
+        elif is_throttled:
+            speed_tag = f"SPD {int(charge_eff * 100)}%"
+            left_color = QColor("#f2cc60")
+        else:
+            speed_tag = "SPD 100%"
+            left_color = QColor("#e6edf3")
+
+        left_text = f"BUFFER [{pct_str}] · {buf_str} Tk  |  {speed_tag}  |  SYNC {chain_stars}"
+        painter.setPen(left_color)
         painter.drawText(
             rect.adjusted(14, 0, -14, 0),
             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,

@@ -445,6 +445,21 @@ class GameState(QObject):
         return any(u["id"] == "ch4_start" and u.get("purchased", False) for u in self.upgrades)
 
     @property
+    def active_bottleneck_count(self) -> int:
+        return sum(1 for v in self.subsystem_bottlenecks.values() if v)
+
+    def get_buffer_charge_efficiency(self) -> float:
+        """과부하 개수(0~3)에 따른 버퍼 충전 속도 배율 반환 (100% -> 70% -> 30% -> 0%)"""
+        cnt = self.active_bottleneck_count
+        if cnt == 0:
+            return 1.0
+        elif cnt == 1:
+            return 0.70
+        elif cnt == 2:
+            return 0.30
+        return 0.0
+
+    @property
     def buffer_max_capacity(self) -> float:
         base_tps = max(10.0, self.effective_tokens_per_sec)
         return base_tps * self.buffer_capacity_sec
@@ -1090,11 +1105,12 @@ class GameState(QObject):
             self.tokens += eff_sec * dt_sec
             changed = True
 
-        # Chap 4+ 관제탑 버퍼 충전 및 Q/W/E 부하 시뮬레이션
+        # Chap 4+ 관제탑 버퍼 충전(과부하 개수별 감쇠 반영) 및 Q/W/E 부하 시뮬레이션
         if self.is_supervisor_mode:
             cap = self.buffer_max_capacity
-            if self.gradient_buffer < cap:
-                charge_rate = max(10.0, eff_sec)
+            charge_eff = self.get_buffer_charge_efficiency()
+            if self.gradient_buffer < cap and charge_eff > 0.0:
+                charge_rate = max(10.0, eff_sec) * charge_eff
                 if self.active_news_buff and self.active_news_buff.get("is_positive", False):
                     charge_rate *= 1.5
                 self.gradient_buffer = min(cap, self.gradient_buffer + charge_rate * dt_sec)
