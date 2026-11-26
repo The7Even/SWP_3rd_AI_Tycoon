@@ -117,7 +117,6 @@ class AiNamingDialog(QDialog):
         lbl_desc.setStyleSheet("color: #c9d1d9; font-size: 12.5px; line-height: 1.4;")
         layout.addWidget(lbl_desc)
 
-        # 터미널 스타일 입력 박스
         input_frame = QFrame()
         input_frame.setStyleSheet("""
             QFrame {
@@ -160,7 +159,6 @@ class AiNamingDialog(QDialog):
         in_row.addWidget(self.input_edit, stretch=1)
         layout.addWidget(input_frame)
 
-        # 추천 프리셋 칩 버튼
         preset_row = QHBoxLayout()
         preset_row.setSpacing(6)
         lbl_pre = QLabel("추천:")
@@ -193,7 +191,6 @@ class AiNamingDialog(QDialog):
 
         layout.addStretch()
 
-        # 하단 확인 / 기본값 유지 버튼
         btn_row = QHBoxLayout()
         btn_row.setSpacing(8)
         btn_row.addStretch()
@@ -279,7 +276,6 @@ class MiniNewsTickerWidget(QWidget):
 
     def _style_card(self, label: QLabel, news_item: dict, width: int):
         category = news_item.get("category", "info")
-        # 다크 틴트 팔레트: (배경, 테두리, 텍스트)
         color_schemes = {
             "info":      ("#272115", "#d29922", "#f2cc60"),
             "positive":  ("#12261e", "#2ea043", "#7ee787"),
@@ -441,7 +437,6 @@ class MainWindow(QMainWindow):
         self.passive_timer = QTimer(self)
         self.passive_timer.timeout.connect(self._on_tick)
 
-        # 45초마다 뉴스 1회 발행 (버프 30초 + 15초 휴식 사이클)
         self.news_timer = QTimer(self)
         self.news_timer.timeout.connect(self._on_random_news_tick)
 
@@ -452,7 +447,6 @@ class MainWindow(QMainWindow):
         self.news_toast_timer.timeout.connect(lambda: self.lbl_news_toast.hide())
         self._connect_signals()
 
-        # 영구 엔딩 기록 로드 후 세이브 복원
         persistent_endings = self.save_manager.load_unlocked_endings()
         self.game_state.sync_persistent_endings(persistent_endings)
         self._load_initial_save()
@@ -465,6 +459,24 @@ class MainWindow(QMainWindow):
         self._update_ui()
         self._sync_bottom_right_panel(force=True)
         self._update_unread_badge(self.game_state.unread_news_count)
+
+    def keyPressEvent(self, event):
+        if (
+            getattr(self.game_state, "is_supervisor_mode", False)
+            and not self.console_widget.is_booting
+            and not self.console_widget.is_dialogue_mode
+        ):
+            if event.key() in (
+                Qt.Key.Key_Q,
+                Qt.Key.Key_W,
+                Qt.Key.Key_E,
+                Qt.Key.Key_Return,
+                Qt.Key.Key_Enter,
+                Qt.Key.Key_Space,
+            ):
+                self.console_widget.keyPressEvent(event)
+                return
+        super().keyPressEvent(event)
 
     def _is_tutorial_active(self) -> bool:
         ch1_node = next((u for u in self.game_state.upgrades if u["id"] == "ch1_start"), None)
@@ -536,7 +548,6 @@ class MainWindow(QMainWindow):
         left_layout.setContentsMargins(0, 0, 0, 0)
         left_layout.setSpacing(0)
 
-        # 1. 상단 다크 HUD 바
         top_bar = QFrame()
         top_bar.setFixedHeight(58)
         top_bar.setStyleSheet("background-color: #161b22; border-bottom: 1px solid #30363d;")
@@ -544,7 +555,6 @@ class MainWindow(QMainWindow):
         top_layout.setContentsMargins(16, 6, 16, 6)
         top_layout.setSpacing(14)
 
-        # AI 이름 · 버전 필(Pill) 배지
         ai_badge_frame = QFrame()
         ai_badge_frame.setStyleSheet("""
             QFrame {
@@ -583,7 +593,6 @@ class MainWindow(QMainWindow):
             border: none;
         """)
 
-        # 상단 우측 스펙(Tk/Command, Tk/s) 및 버프 배지
         rates_box = QWidget()
         rates_box.setStyleSheet("background-color: transparent; border: none;")
         rates_vbox = QVBoxLayout(rates_box)
@@ -635,11 +644,9 @@ class MainWindow(QMainWindow):
         top_layout.addWidget(rates_box)
         left_layout.addWidget(top_bar)
 
-        # 2. 중앙 가상 콘솔
         self.console_widget = VirtualConsoleWidget(self.game_state)
         left_layout.addWidget(self.console_widget, stretch=1)
 
-        # 3. 하단 도크 (SYSTEM SPECS + NEWS TICKER)
         bottom_bar = QFrame()
         bottom_bar.setFixedHeight(162)
         bottom_bar.setStyleSheet("background-color: #161b22; border-top: 1px solid #30363d;")
@@ -647,7 +654,6 @@ class MainWindow(QMainWindow):
         bottom_layout.setContentsMargins(0, 0, 0, 0)
         bottom_layout.setSpacing(0)
 
-        # 좌측 SYSTEM SPECS 패널 (챕터 표기 없음, Pretendard 폰트 적용)
         specs_box = QWidget()
         specs_box.setStyleSheet("background-color: #161b22; border: none;")
         specs_layout = QVBoxLayout(specs_box)
@@ -722,7 +728,6 @@ class MainWindow(QMainWindow):
 
         bottom_layout.addWidget(specs_box, stretch=48)
 
-        # 우측 NEWS / DEV GUIDE 패널
         news_box = QFrame()
         news_box.setStyleSheet("QFrame { background-color: #161b22; border-left: 1px solid #30363d; }")
         news_layout = QVBoxLayout(news_box)
@@ -816,7 +821,6 @@ class MainWindow(QMainWindow):
         self.console_widget.request_reset_game.connect(self._on_console_reset_game)
 
     def _on_ai_naming_requested(self):
-        """Chap 3 공개 베타 진입 시 AI 이름 지정 다크 다이얼로그"""
         dlg = AiNamingDialog(self.game_state.ai_name, self)
         if dlg.exec() == QDialog.DialogCode.Accepted and dlg.get_name():
             self.game_state.set_ai_name(dlg.get_name())
@@ -828,13 +832,11 @@ class MainWindow(QMainWindow):
         dlg.exec()
 
     def _on_singularity_reached(self):
-        """Chap 8 특이점 도달 시 뉴스 타이머 정지 및 콘솔을 AI 1대1 독대 모드로 전환"""
         if hasattr(self, "news_timer"):
             self.news_timer.stop()
         self.console_widget.start_singularity_dialogue()
 
     def _on_ending_completed(self, ending_id: str):
-        """엔딩 도달 시 영구 엔딩 기록 저장"""
         self.game_state.record_ending(ending_id)
         self.save_manager.save_unlocked_endings(list(self.game_state.unlocked_endings))
         self.save_manager.save_auto(self.game_state.to_dict())
@@ -962,7 +964,6 @@ class MainWindow(QMainWindow):
             font-family: 'Consolas', 'D2Coding', monospace; font-size: 13px; font-weight: bold; border: none;
         """
 
-        # 배지에는 효과 수치 + 남은 시간 표시, 호버 시에는 효과 내용만 표시
         badge_text = f"{icon_char} {val_str} ({rem}s)"
         tooltip_text = summary
 
@@ -985,7 +986,10 @@ class MainWindow(QMainWindow):
         gs = self.game_state
         self.lbl_ai_badge.setText(f"{gs.ai_name} · {gs.get_ai_version()}")
         self.lbl_tokens.setText(f"{format_number(gs.tokens)} Token")
-        self.lbl_cmd_rate.setText(f"{format_number(gs.effective_tokens_per_command)} Tk/Command")
+        if gs.is_supervisor_mode:
+            self.lbl_cmd_rate.setText(f"{format_number(gs.effective_tokens_per_command)} Tk/Node")
+        else:
+            self.lbl_cmd_rate.setText(f"{format_number(gs.effective_tokens_per_command)} Tk/Command")
         self.lbl_sec_rate.setText(f"{format_number(gs.effective_tokens_per_sec)} Tk/s")
         self._update_rate_badges()
 

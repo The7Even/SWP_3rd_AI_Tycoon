@@ -24,6 +24,13 @@ class GameState(QObject):
     }
     VALID_ENDING_IDS = BASIC_ENDING_IDS | {"ending_s_beyond"}
 
+    SUBSYSTEM_KEYS = ("Q", "W", "E")
+    SUBSYSTEM_LABELS = {
+        "Q": ("COMPUTE", "텐서 연산 코어"),
+        "W": ("MEMORY", "VRAM 캐시 풀"),
+        "E": ("BANDWIDTH", "광대역 인터커넥트"),
+    }
+
     # 실제 upgrades.json 노드 ID -> ai_dialogues.json의 node_triggers 키 매핑 (총 23개)
     NODE_DIALOGUE_TRIGGER_MAP = {
         "ch3_neu_demo": "ch3_web_demo",
@@ -285,6 +292,15 @@ class GameState(QObject):
         self.ai_name: str = "Proto-AI"
         self.ai_named: bool = False
 
+        # Chap 4+ 관제탑(Supervisor) 액티브 시스템 상태
+        self.gradient_buffer: float = 0.0
+        self.buffer_capacity_sec: float = 30.0
+        self.harvest_bonus_mult: float = 0.0
+        self.sync_chain: int = 0
+        self.subsystem_loads: dict[str, float] = {"Q": 35.0, "W": 42.0, "E": 28.0}
+        self.subsystem_bottlenecks: dict[str, bool] = {"Q": False, "W": False, "E": False}
+        self._bottleneck_spawn_timer: float = 4.0
+
         # 뉴스 덱 & 버프 상태 (중첩 없음, 30초 지속)
         self.news_deck_chapter: int = 1
         self.used_news_indices: list[int] = []
@@ -423,9 +439,120 @@ class GameState(QObject):
             self.command_tier_changed.emit(self.command_tier)
             self.unread_news_changed.emit(self.unread_news_count)
 
+    # ---------------- Chap 4+ 관제탑(Supervisor) 액티브 시스템 ----------------
+    @property
+    def is_supervisor_mode(self) -> bool:
+        return any(u["id"] == "ch4_start" and u.get("purchased", False) for u in self.upgrades)
+
+    @property
+    def buffer_max_capacity(self) -> float:
+        base_tps = max(10.0, self.effective_tokens_per_sec)
+        return base_tps * self.buffer_capacity_sec
+
+    @property
+    def buffer_fill_ratio(self) -> float:
+        cap = self.buffer_max_capacity
+        if cap <= 0:
+            return 0.0
+        return min(1.0, max(0.0, self.gradient_buffer / cap))
+
+    def get_current_harvest_multiplier(self) -> float:
+        ratio = self.buffer_fill_ratio
+        if ratio >= 0.70:
+            sweet_spot = 1.8 + ((ratio - 0.70) / 0.30) * 0.7
+        else:
+            sweet_spot = 1.0 + (ratio / 0.70) * 0.4
+        total_mult = sweet_spot + self.harvest_bonus_mult
+        if self.sync_chain >= 3:
+            total_mult *= 1.5
+        return round(total_mult, 2)
+
+    def get_expected_harvest_tokens(self) -> float:
+        return self.gradient_buffer * self.get_current_harvest_multiplier()
+
+    def _trigger_bottleneck(self, force_all: bool = False):
+        if force_all:
+            for k in self.SUBSYSTEM_KEYS:
+                self.subsystem_bottlenecks[k] = True
+                self.subsystem_loads[k] = 99.0
+            return
+
+        available = [k for k in self.SUBSYSTEM_KEYS if not self.subsystem_bottlenecks[k]]
+        if available:
+            chosen = random.choice(available)
+            self.subsystem_bottlenecks[chosen] = True
+            self.subsystem_loads[chosen] = round(random.uniform(94.0, 99.0), 1)
+
+    def resolve_subsystem_bottleneck(self, key: str) -> dict:
+        key = key.upper()
+        if not self.is_supervisor_mode or self.is_ending_locked or key not in self.SUBSYSTEM_KEYS:
+            return {"ok": False}
+
+        if not self.subsystem_bottlenecks.get(key, False):
+            prev_chain = self.sync_chain
+            self.sync_chain = 0
+            self.state_changed.emit()
+            return {"ok": False, "reason": "not_overloaded", "chain_broken": prev_chain > 0}
+
+        self.subsystem_bottlenecks[key] = False
+        self.subsystem_loads[key] = round(random.uniform(22.0, 40.0), 1)
+
+        instant_gain = self.effective_tokens_per_command * 1.5
+        self.tokens += instant_gain
+
+        self.harvest_bonus_mult = min(1.50, round(self.harvest_bonus_mult + 0.25, 2))
+        self.sync_chain = min(3, self.sync_chain + 1)
+
+        cleared_danger_news = False
+        danger_bonus = 0.0
+        if (
+            self.active_news_buff is not None
+            and not self.active_news_buff.get("is_positive", True)
+            and not any(self.subsystem_bottlenecks.values())
+        ):
+            self.active_news_buff = None
+            cleared_danger_news = True
+            danger_bonus = max(instant_gain * 2.0, self.effective_tokens_per_sec * 10.0)
+            self.tokens += danger_bonus
+
+        self.state_changed.emit()
+        return {
+            "ok": True,
+            "key": key,
+            "instant_gain": instant_gain,
+            "bonus_mult": self.harvest_bonus_mult,
+            "sync_chain": self.sync_chain,
+            "cleared_danger": cleared_danger_news,
+            "danger_bonus": danger_bonus,
+        }
+
+    def harvest_gradient_buffer(self) -> dict:
+        if not self.is_supervisor_mode or self.is_ending_locked:
+            return {"ok": False}
+        if self.gradient_buffer < 1.0:
+            return {"ok": False, "reason": "empty"}
+
+        mult = self.get_current_harvest_multiplier()
+        was_synced = (self.sync_chain >= 3)
+        fill_pct = int(round(self.buffer_fill_ratio * 100))
+        earned = self.gradient_buffer * mult
+
+        self.tokens += earned
+        self.gradient_buffer = 0.0
+        self.harvest_bonus_mult = 0.0
+        self.sync_chain = 0
+
+        self.state_changed.emit()
+        return {
+            "ok": True,
+            "earned": earned,
+            "mult": mult,
+            "was_synced": was_synced,
+            "fill_pct": fill_pct,
+        }
+
     # ---------------- 가상 대화 마일스톤 감지 ----------------
     def check_dialogue_milestones(self, purchased_node_id: str | None = None):
-        """메이저 버전 진입 또는 특정 사건 노드 구매 시 1회성 대사를 우선순위 큐에 등록"""
         current_ver = self.get_ai_version()
         if current_ver != self._last_checked_version:
             self._last_checked_version = current_ver
@@ -485,11 +612,9 @@ class GameState(QObject):
     def get_ai_version(self) -> str:
         purchased_ids = {u["id"] for u in self.upgrades if u.get("purchased")}
 
-        # Chap 8: 특이점
         if "ch8_singularity" in purchased_ids:
             return "v8.0"
 
-        # Chap 7: v5.1 ~ v5.2 -> v6.0 -> v6.1 ~ v6.2 -> v7.0
         if "ch7_end" in purchased_ids:
             return "v7.0"
         if "ch7_neu_global" in purchased_ids:
@@ -503,7 +628,6 @@ class GameState(QObject):
         if "ch7_start" in purchased_ids:
             return "v5.1"
 
-        # Chap 6: v3.1 (ch6_start) -> v3.2 -> v4.0 (ch6_LF_cxt) -> v4.1 -> v4.2 -> v5.0 (ch6_end)
         if "ch6_end" in purchased_ids:
             return "v5.0"
         if "ch6_neu_research" in purchased_ids:
@@ -517,7 +641,6 @@ class GameState(QObject):
         if "ch6_start" in purchased_ids:
             return "v3.1"
 
-        # Chap 5: v2.1 -> v2.2 -> v2.3 -> v3.0 (ch5_mid)
         if "ch5_mid" in purchased_ids or "ch5_end" in purchased_ids:
             return "v3.0"
         if "ch5_neu_api" in purchased_ids:
@@ -527,7 +650,6 @@ class GameState(QObject):
         if "ch5_start" in purchased_ids:
             return "v2.1"
 
-        # Chap 4: v1.1 ~ v1.4 -> v2.0
         if "ch4_end" in purchased_ids:
             return "v2.0"
         if "ch4_sw_rlhf" in purchased_ids or "ch4_hw_ryzen9" in purchased_ids or "ch4_neu_community" in purchased_ids:
@@ -539,19 +661,16 @@ class GameState(QObject):
         if "ch4_start" in purchased_ids:
             return "v1.1"
 
-        # Chap 3: v0.9-beta -> v1.0
         if "ch3_end" in purchased_ids:
             return "v1.0"
         if "ch3_start" in purchased_ids:
             return "v0.9-beta"
 
-        # Chap 2: v0.8 -> v0.9
         if "ch2_end" in purchased_ids:
             return "v0.9"
         if "ch2_start" in purchased_ids:
             return "v0.8"
 
-        # Chap 1: v0.4 -> v0.7
         if "ch1_end" in purchased_ids:
             return "v0.7"
         if "ch1_hw_cpu1" in purchased_ids or "ch1_hw_gpu0" in purchased_ids or "ch1_hw_psu" in purchased_ids:
@@ -561,7 +680,6 @@ class GameState(QObject):
         if "ch1_start" in purchased_ids:
             return "v0.4"
 
-        # Tutorial (Chap 0): v0.1 -> v0.3
         if "tut_act_key" in purchased_ids or "tut_pas_pc" in purchased_ids:
             return "v0.3"
         if "tut_buffer" in purchased_ids:
@@ -594,7 +712,6 @@ class GameState(QObject):
         flat_add = val if mode == "flat" else 0.0
         pct_add = val if mode == "percent" else 0.0
 
-        # 공식: (기본값 + 고정치) * (1 + 퍼센트 / 100)
         result = (base_value + flat_add) * (1.0 + pct_add / 100.0)
         return max(0.0, result)
 
@@ -645,7 +762,6 @@ class GameState(QObject):
         purchased_cnt = sum(1 for u in self.upgrades if u.get("purchased"))
         total_upgs = len(self.upgrades)
 
-        # 정규 스토리 도감(16) + 엔딩(기본 4 + 히든 1 = 5) = 총 21개
         story_dex_unlocked = sum(1 for d in self.encyclopedia if d.get("unlocked"))
         story_dex_total = len(self.encyclopedia)
         endings_unlocked_cnt = len(self.unlocked_endings & self.VALID_ENDING_IDS)
@@ -669,7 +785,7 @@ class GameState(QObject):
 
     def to_dict(self) -> dict:
         return {
-            "version": 7,
+            "version": 8,
             "summary": self.build_save_summary(),
             "tokens": self.tokens,
             "tokens_per_command": self.tokens_per_command,
@@ -680,6 +796,11 @@ class GameState(QObject):
             "unread_news_count": self.unread_news_count,
             "ai_name": self.ai_name,
             "ai_named": self.ai_named,
+            "gradient_buffer": self.gradient_buffer,
+            "harvest_bonus_mult": self.harvest_bonus_mult,
+            "sync_chain": self.sync_chain,
+            "subsystem_loads": dict(self.subsystem_loads),
+            "subsystem_bottlenecks": dict(self.subsystem_bottlenecks),
             "news_deck_chapter": self.news_deck_chapter,
             "used_news_indices": list(self.used_news_indices),
             "played_version_intros": sorted(self.played_version_intros),
@@ -708,6 +829,14 @@ class GameState(QObject):
         self.ai_name = str(data.get("ai_name", "Proto-AI"))
         self.ai_named = bool(data.get("ai_named", False))
 
+        self.gradient_buffer = float(data.get("gradient_buffer", 0.0))
+        self.harvest_bonus_mult = float(data.get("harvest_bonus_mult", 0.0))
+        self.sync_chain = int(data.get("sync_chain", 0))
+        if isinstance(data.get("subsystem_loads"), dict):
+            self.subsystem_loads.update(data["subsystem_loads"])
+        if isinstance(data.get("subsystem_bottlenecks"), dict):
+            self.subsystem_bottlenecks.update(data["subsystem_bottlenecks"])
+
         if isinstance(data.get("specs"), dict):
             self.specs.update(data["specs"])
 
@@ -716,7 +845,6 @@ class GameState(QObject):
             u["purchased"] = (u["id"] in purchased_ids)
 
         unlocked_dex_ids = set(data.get("unlocked_encyclopedia", ["col_hello_world"]))
-        # 기존 세이브 호환: 이미 구매한 업그레이드에 연결된 도감 항목도 자동 보정 해금
         for pid in purchased_ids:
             mapped_dex = self.NODE_DEX_UNLOCK_MAP.get(pid)
             if mapped_dex:
@@ -731,16 +859,13 @@ class GameState(QObject):
         if isinstance(data.get("news_history"), list):
             self.news_history = copy.deepcopy(data["news_history"])
 
-        # 가상 대화 1회성 이력 복원
         self.played_version_intros = set(data.get("played_version_intros", []))
         self.played_node_triggers = set(data.get("played_node_triggers", []))
         self._last_checked_version = str(data.get("last_checked_version", self.get_ai_version()))
         self.pending_dialogue_queue.clear()
 
-        # 6단계 AI 활동 상태 재계산
         self._recalculate_ai_activities()
 
-        # 뉴스 덱 중복 방지 인덱스 복원
         cur_chap = self.get_current_chapter()
         saved_chap = int(data.get("news_deck_chapter", cur_chap))
         saved_used = data.get("used_news_indices", [])
@@ -833,7 +958,6 @@ class GameState(QObject):
         mode = effect.get("mode", "flat")
         val = float(effect.get("value", 0))
 
-        # 1. 즉시형 토큰 증감
         if target == "instant_tokens":
             if mode == "percent":
                 raw_delta = self.tokens * (val / 100.0)
@@ -851,7 +975,6 @@ class GameState(QObject):
 
             return self._build_effect_summary(effect, applied_instant_delta=applied_delta)
 
-        # 2. 지속형 버프/디버프 (30초 유지, 중첩 없이 최신 뉴스로 갱신)
         if target in ("passive_rate", "command_rate"):
             dur = float(effect.get("duration_sec", 30))
             self.active_news_buff = {
@@ -927,6 +1050,8 @@ class GameState(QObject):
             category = "positive"
         elif news_type == 3:
             category = "danger"
+            if self.is_supervisor_mode:
+                self._trigger_bottleneck(force_all=True)
         else:
             category = "info"
 
@@ -954,7 +1079,6 @@ class GameState(QObject):
 
         changed = False
 
-        # 활성 뉴스 버프 잔여 시간 차감
         if self.active_news_buff is not None:
             self.active_news_buff["remaining_sec"] -= dt_sec
             if self.active_news_buff["remaining_sec"] <= 0:
@@ -965,6 +1089,28 @@ class GameState(QObject):
         if eff_sec > 0:
             self.tokens += eff_sec * dt_sec
             changed = True
+
+        # Chap 4+ 관제탑 버퍼 충전 및 Q/W/E 부하 시뮬레이션
+        if self.is_supervisor_mode:
+            cap = self.buffer_max_capacity
+            if self.gradient_buffer < cap:
+                charge_rate = max(10.0, eff_sec)
+                if self.active_news_buff and self.active_news_buff.get("is_positive", False):
+                    charge_rate *= 1.5
+                self.gradient_buffer = min(cap, self.gradient_buffer + charge_rate * dt_sec)
+                changed = True
+
+            self._bottleneck_spawn_timer -= dt_sec
+            if self._bottleneck_spawn_timer <= 0.0:
+                self._trigger_bottleneck(force_all=False)
+                is_pos_news = bool(self.active_news_buff and self.active_news_buff.get("is_positive", False))
+                self._bottleneck_spawn_timer = 4.5 if is_pos_news else 6.8
+                changed = True
+
+            for k in self.SUBSYSTEM_KEYS:
+                if not self.subsystem_bottlenecks[k]:
+                    delta = random.uniform(-1.8, 2.2)
+                    self.subsystem_loads[k] = round(min(78.0, max(18.0, self.subsystem_loads[k] + delta)), 1)
 
         if changed:
             self._recalculate_ai_activities()
@@ -1001,7 +1147,6 @@ class GameState(QObject):
         target["purchased"] = True
         self._apply_upgrade_effects(target)
 
-        # 노드 ID 기반 연대기 도감 자동 해금
         if upgrade_id in self.NODE_DEX_UNLOCK_MAP:
             self.unlock_encyclopedia(self.NODE_DEX_UNLOCK_MAP[upgrade_id])
 
@@ -1011,16 +1156,13 @@ class GameState(QObject):
         if new_chap != prev_chap:
             self._rebuild_news_deck(chapter=new_chap, reset_used=True)
 
-        # 버전 진입(version_intros) 및 특정 사건 노드(node_triggers) 1회성 대화 큐 등록
         self.check_dialogue_milestones(purchased_node_id=upgrade_id)
 
         self.state_changed.emit()
 
-        # Chap 3 진입 시 AI 공식 작명을 먼저 받아서 스토리/뉴스에 바로 반영
         if upgrade_id == "ch3_start" and not self.ai_named:
             self.ai_naming_requested.emit()
 
-        # story_events.json 우선 로드 (없으면 upgrades.json 내장 story_event 폴백)
         raw_story = self.story_events_map.get(upgrade_id) or target.get("story_event")
         if isinstance(raw_story, dict):
             formatted_story = copy.deepcopy(raw_story)
@@ -1028,7 +1170,6 @@ class GameState(QObject):
             formatted_story["content"] = self._format_news_placeholders(str(formatted_story.get("content", "")))
             self.story_event_triggered.emit(formatted_story)
 
-            # type: 4 스토리 뉴스가 정의되어 있으면 뉴스 피드에 자동 추가
             s_news = raw_story.get("story_news")
             if isinstance(s_news, dict):
                 self.push_news(
