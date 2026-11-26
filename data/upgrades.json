@@ -43,7 +43,7 @@
       "req": [
         "tut_buffer"
       ],
-      "desc": "[튜토리얼] 기본 개발 PC 세팅, 명령어당 토큰 +2 (4 Tk/Cmd)",
+      "desc": "[튜토리얼] 기본 개발 PC 세팅, 명령어당 토큰 +2 (2 Tk/Cmd)",
       "effects": {
         "cmd_add": 2,
         "bench_add": 40,
