@@ -63,6 +63,7 @@ def export_balance_csv(upgrades: list[dict], output_path: str):
     sec_rate = 0.0
     cooldown_ms = 200
     tier = 1
+    is_supervisor = False
 
     tier_cps_map = {
         1: 0.35,
@@ -95,11 +96,18 @@ def export_balance_csv(upgrades: list[dict], output_path: str):
         name = u["name"]
         cost = float(u["cost"])
 
-        base_cps = tier_cps_map.get(tier, 0.4)
-        effective_cps = min(base_cps, 1000.0 / max(cooldown_ms, 50) * 0.12)
+        if not is_supervisor:
+            base_cps = tier_cps_map.get(tier, 0.4)
+            effective_cps = min(base_cps, 1000.0 / max(cooldown_ms, 50) * 0.12)
+            active_tps = cmd_rate * effective_cps
+            passive_tps = sec_rate
+        else:
+            # Chap 4+ 관제탑 모드: Q/W/E 냉각 즉각 보상(분당 ~5회) + 버퍼 배율 증폭분(패시브의 약 22%)
+            cooling_tps = (cmd_rate * 1.5) * (5.0 / 60.0)
+            harvest_bonus_tps = sec_rate * 0.22
+            active_tps = cooling_tps + harvest_bonus_tps
+            passive_tps = sec_rate
 
-        active_tps = cmd_rate * effective_cps
-        passive_tps = sec_rate
         total_tps = active_tps + passive_tps
 
         if total_tps > 0:
@@ -125,9 +133,11 @@ def export_balance_csv(upgrades: list[dict], output_path: str):
         cooldown_ms = max(20, cooldown_ms + int(eff.get("cooldown_add", 0)))
         if "tier_min" in eff:
             tier = max(tier, int(eff["tier_min"]))
+        if u["id"] == "ch4_start":
+            is_supervisor = True
 
-        cd_tier_str = f"{cooldown_ms}ms / T{tier}"
-        # 엑셀 시간(시:분) 자동 서식 변환 방지용 포맷
+        mode_tag = "SUP" if is_supervisor else f"T{tier}"
+        cd_tier_str = f"{cooldown_ms}ms / {mode_tag}"
         ratio_str = f"{int(round(act_pct))}% / {int(round(pas_pct))}%"
 
         st = chapter_stats[ch]
@@ -196,7 +206,7 @@ def export_balance_csv(upgrades: list[dict], output_path: str):
         format_num(sum(st["total_cost"] for st in chapter_stats.values())),
         format_num(cmd_rate),
         format_num(sec_rate),
-        f"{cooldown_ms}ms / T{tier}",
+        f"{cooldown_ms}ms / SUP",
         f"{int(round(total_avg_a))}% / {int(round(total_avg_p))}%",
         format_duration(total_raw_sec),
         format_duration(total_adj_sec),

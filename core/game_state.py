@@ -617,18 +617,25 @@ class GameState(QObject):
     # ---------------- 챕터 & AI 이름/버전 동적 계산 ----------------
     def get_current_chapter(self) -> int:
         purchased_ids = {u["id"] for u in self.upgrades if u.get("purchased")}
-        if "ch8_singularity" in purchased_ids:
-            return 8
-        for chap in range(7, 0, -1):
+        for chap in range(8, 0, -1):
             if f"ch{chap}_start" in purchased_ids:
                 return chap
+        if "ch8_singularity" in purchased_ids:
+            return 8
         return 1
 
     def get_ai_version(self) -> str:
         purchased_ids = {u["id"] for u in self.upgrades if u.get("purchased")}
 
+        # Chap 8: v7.1 -> v7.2 -> v7.3 -> v7.4(특이점 임계) / v8.0(AI 특이점 선언 완료)
         if "ch8_singularity" in purchased_ids:
             return "v8.0"
+        if "ch8_horizon" in purchased_ids:
+            return "v7.3"
+        if "ch8_recursion" in purchased_ids:
+            return "v7.2"
+        if "ch8_start" in purchased_ids:
+            return "v7.1"
 
         if "ch7_end" in purchased_ids:
             return "v7.0"

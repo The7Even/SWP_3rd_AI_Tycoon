@@ -169,6 +169,8 @@ class SubsystemCardButton(QPushButton):
         super().__init__(parent)
         self.key_char = key_char
         self.title = title
+        self._last_bottleneck: bool | None = None
+        self._last_load_int: int = -1
         self.setFixedHeight(66)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -194,7 +196,15 @@ class SubsystemCardButton(QPushButton):
         self.update_visual(load_pct=35.0, is_bottleneck=False)
 
     def update_visual(self, load_pct: float, is_bottleneck: bool):
-        self.lbl_load.setText(f"{int(round(load_pct))}%")
+        load_int = int(round(load_pct))
+        if load_int != self._last_load_int:
+            self._last_load_int = load_int
+            self.lbl_load.setText(f"{load_int}%")
+
+        if self._last_bottleneck == is_bottleneck:
+            return
+        self._last_bottleneck = is_bottleneck
+
         if is_bottleneck:
             self.setStyleSheet("""
                 SubsystemCardButton {
@@ -295,12 +305,13 @@ class ClickableLogView(QTextEdit):
 
 
 class VirtualConsoleWidget(QFrame):
-    """가상 콘솔 위젯 (명령어 입력 + Chap 4+ 관제탑 패널 + 개발자-AI 대화, 특이점 이후는 SingularityDialogueController에 위임)"""
+    """가상 콘솔 위젯 (O(1) 블록 단위 로그/대화 엔진 + Chap 4+ 관제탑 패널 + 특이점 컨트롤러)"""
 
     ending_completed = pyqtSignal(str)
     request_load_branch = pyqtSignal(int)
     request_reset_game = pyqtSignal()
 
+    MAX_LOG_LINES = 160
     SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
 
     DEFAULT_COMMANDS = {
@@ -353,6 +364,9 @@ class VirtualConsoleWidget(QFrame):
         self._boot_step = 0
         self._last_cooldown_ms = self.game_state.input_cooldown_ms
         self._was_supervisor_mode = False
+        self._last_session_text = ""
+        self._last_prompt_border = ""
+        self._last_status_style_key = ""
 
         self.current_cmd_entry: dict = {"cmd": "", "output": ""}
         self.typed_text = ""
@@ -365,6 +379,7 @@ class VirtualConsoleWidget(QFrame):
         self._spinner_idx: int = 0
         self._spinner_ticks_left: int = 0
         self._active_typing_html: str | None = None
+        self._live_block_active: bool = False
         self._pending_dev_line_idx: int | None = None
 
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -508,6 +523,7 @@ class VirtualConsoleWidget(QFrame):
 
         self.log_view = ClickableLogView()
         self.log_view.setReadOnly(True)
+        self.log_view.setUndoRedoEnabled(False)
         self.log_view.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.log_view.setStyleSheet("""
             QTextEdit {
@@ -557,21 +573,31 @@ class VirtualConsoleWidget(QFrame):
         layout.addWidget(self.dialogue_panel)
 
         self.lbl_status = QLabel(f"Latency: {self.game_state.input_cooldown_ms}ms")
-        self.lbl_status.setStyleSheet("""
-            color: #8b949e;
-            font-family: 'Consolas', 'D2Coding', monospace;
-            font-size: 11px;
-            padding-left: 2px;
-        """)
+        self._set_status_label(f"Latency: {self.game_state.input_cooldown_ms}ms", "#8b949e", bold=False)
         layout.addWidget(self.lbl_status)
+
+    def _set_status_label(self, text: str, color: str, bold: bool = False):
+        if self.lbl_status.text() != text:
+            self.lbl_status.setText(text)
+        style_key = f"{color}:{int(bold)}"
+        if self._last_status_style_key != style_key:
+            self._last_status_style_key = style_key
+            weight = "font-weight: bold;" if bold else ""
+            self.lbl_status.setStyleSheet(f"""
+                color: {color}; font-family: 'Consolas', 'D2Coding', monospace;
+                font-size: 11px; {weight} padding-left: 2px;
+            """)
 
     def _update_session_header(self):
         ai_name = getattr(self.game_state, "ai_name", "Proto-AI") or "Proto-AI"
         slug = ai_name.strip().lower().replace(" ", "-")
         if getattr(self.game_state, "is_supervisor_mode", False):
-            self.lbl_session.setText(f"SESSION: supervisor://{slug}-cluster-v4")
+            txt = f"SESSION: supervisor://{slug}-cluster-v4"
         else:
-            self.lbl_session.setText(f"SESSION: local-node://{slug}-core")
+            txt = f"SESSION: local-node://{slug}-core"
+        if txt != self._last_session_text:
+            self._last_session_text = txt
+            self.lbl_session.setText(txt)
 
     def mousePressEvent(self, event):
         super().mousePressEvent(event)
@@ -591,6 +617,9 @@ class VirtualConsoleWidget(QFrame):
             return
 
         if getattr(self.game_state, "is_supervisor_mode", False):
+            if event.isAutoRepeat():
+                event.accept()
+                return
             key = event.key()
             if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Space):
                 self._on_supervisor_harvest()
@@ -661,7 +690,6 @@ class VirtualConsoleWidget(QFrame):
             bold=True
         )
         self.show_feedback(f"배치 수확 완료! +{earned_str} Token 정산", is_error=False)
-        self.supervisor_panel.refresh_display()
 
     def _on_supervisor_subsystem(self, key_char: str):
         res = self.game_state.resolve_subsystem_bottleneck(key_char)
@@ -686,9 +714,11 @@ class VirtualConsoleWidget(QFrame):
                 self.show_feedback(f"[{key_char}] 정상 가동 중 — 동기화 체인이 초기화되었습니다.", is_error=True)
             else:
                 self.show_feedback(f"[{key_char}] 모듈은 현재 정상 가동 중입니다.", is_error=False)
-        self.supervisor_panel.refresh_display()
 
     def _apply_prompt_border(self, border_color: str):
+        if self._last_prompt_border == border_color:
+            return
+        self._last_prompt_border = border_color
         self.prompt_box.setStyleSheet(f"""
             QTextEdit {{
                 background-color: #090c10;
@@ -702,7 +732,6 @@ class VirtualConsoleWidget(QFrame):
         """)
 
     def scroll_to_bottom(self):
-        self.log_view.moveCursor(QTextCursor.MoveOperation.End)
         sb = self.log_view.verticalScrollBar()
         if sb:
             sb.setValue(sb.maximum())
@@ -721,22 +750,68 @@ class VirtualConsoleWidget(QFrame):
         self._spinner_idx = 0
         self._spinner_ticks_left = 0
         self._active_typing_html = None
+        self._live_block_active = False
         self._pending_dev_line_idx = None
+
+    def _trim_excess_doc_blocks(self):
+        """O(1) 최상단 블록 제거 — 160줄 초과 시에도 전체 HTML 재파싱 금지"""
+        doc = self.log_view.document()
+        max_blocks = self.MAX_LOG_LINES + (1 if self._live_block_active else 0)
+        while doc.blockCount() > max_blocks:
+            c = QTextCursor(doc)
+            c.movePosition(QTextCursor.MoveOperation.Start)
+            c.select(QTextCursor.SelectionType.BlockUnderCursor)
+            c.removeSelectedText()
+            c.deleteChar()
+
+    def _set_live_block_html(self, html: str):
+        """O(1) 하단 타이핑/스피너 1줄만 인플레이스 교체"""
+        doc = self.log_view.document()
+        cursor = QTextCursor(doc)
+        if not self._live_block_active:
+            cursor.movePosition(QTextCursor.MoveOperation.End)
+            if doc.characterCount() > 1:
+                cursor.insertBlock()
+            cursor.insertHtml(html)
+            self._live_block_active = True
+            self._trim_excess_doc_blocks()
+        else:
+            last_blk = doc.lastBlock()
+            cursor.setPosition(last_blk.position())
+            cursor.movePosition(QTextCursor.MoveOperation.EndOfBlock, QTextCursor.MoveMode.KeepAnchor)
+            cursor.insertHtml(html)
+        self.scroll_to_bottom()
 
     def append_log(self, text: str, color: str = "#c9d1d9", bold: bool = False):
         line_html = self.format_line_html(text, color, bold)
+
         if self._pending_dev_line_idx is not None:
             self._log_lines_html.insert(self._pending_dev_line_idx, line_html)
             self._pending_dev_line_idx += 1
         else:
             self._log_lines_html.append(line_html)
 
-        if len(self._log_lines_html) > 160:
+        if len(self._log_lines_html) > self.MAX_LOG_LINES:
             self._log_lines_html.pop(0)
             if self._pending_dev_line_idx is not None:
                 self._pending_dev_line_idx = max(0, self._pending_dev_line_idx - 1)
 
-        self.render_log_view(active_line_html=self._active_typing_html)
+        doc = self.log_view.document()
+        cursor = QTextCursor(doc)
+        if self._live_block_active:
+            # 실시간 대화 출력 중이면 마지막 타이핑 줄 바로 위에 O(1) 삽입
+            last_blk = doc.lastBlock()
+            cursor.setPosition(last_blk.position())
+            cursor.insertHtml(line_html)
+            cursor.insertBlock()
+        else:
+            cursor.movePosition(QTextCursor.MoveOperation.End)
+            if doc.characterCount() > 1:
+                cursor.insertBlock()
+            cursor.insertHtml(line_html)
+
+        self._trim_excess_doc_blocks()
+        self.scroll_to_bottom()
 
     def format_line_html(self, text: str, color: str, bold: bool = False, cursor_suffix: str = "") -> str:
         if not text and not cursor_suffix:
@@ -746,6 +821,8 @@ class VirtualConsoleWidget(QFrame):
         return f'<span style="color:{color};{weight}">{escaped}</span>{cursor_suffix}'
 
     def render_log_view(self, active_line_html: str | None = None):
+        """SingularityDialogueController 호환용 전체 렌더러"""
+        self._live_block_active = False
         lines = list(self._log_lines_html)
         if active_line_html is not None:
             lines.append(active_line_html)
@@ -813,7 +890,7 @@ class VirtualConsoleWidget(QFrame):
                 self.prompt_box.setFocus()
             self._schedule_next_auto_dialogue()
 
-    # ==================== 가상 대화 스피너 & 타자기 출력 엔진 ====================
+    # ==================== 가상 대화 스피너 & 타자기 출력 엔진 (O(1) 인플레이스) ====================
     def _schedule_next_auto_dialogue(self):
         delay_ms = int(random.uniform(35.0, 50.0) * 1000)
         self.auto_dialogue_timer.start(delay_ms)
@@ -917,6 +994,7 @@ class VirtualConsoleWidget(QFrame):
         self._active_ai_full_text = self._format_dialogue_text(ai_raw)
         self._dialogue_phase = "typing_dev"
         self._typing_char_idx = 0
+        self._live_block_active = False
         self._pending_dev_line_idx = None
         self._step_dialogue_animation()
 
@@ -926,16 +1004,19 @@ class VirtualConsoleWidget(QFrame):
             partial = self._active_dev_full_text[:self._typing_char_idx]
             cursor = '<span style="color:#e6edf3;">▌</span>' if self._typing_char_idx < len(self._active_dev_full_text) else ""
             self._active_typing_html = self.format_line_html(partial, color="#e6edf3", bold=True, cursor_suffix=cursor)
-            self.render_log_view(active_line_html=self._active_typing_html)
+            self._set_live_block_html(self._active_typing_html)
 
             if self._typing_char_idx < len(self._active_dev_full_text):
                 self.dialogue_anim_timer.start(28)
             else:
                 final_dev_html = self.format_line_html(self._active_dev_full_text, color="#e6edf3", bold=True)
+                self._set_live_block_html(final_dev_html)
                 self._log_lines_html.append(final_dev_html)
-                if len(self._log_lines_html) > 160:
+                if len(self._log_lines_html) > self.MAX_LOG_LINES:
                     self._log_lines_html.pop(0)
 
+                # 개발자 대사 확정 완료 -> 다음 AI 줄을 새 라이브 블록으로 시작
+                self._live_block_active = False
                 self._pending_dev_line_idx = len(self._log_lines_html) - 1
                 self._dialogue_phase = "thinking_ai"
                 self._spinner_idx = 0
@@ -956,7 +1037,7 @@ class VirtualConsoleWidget(QFrame):
                     color=ai_color,
                     bold=False,
                 )
-                self.render_log_view(active_line_html=self._active_typing_html)
+                self._set_live_block_html(self._active_typing_html)
                 self.dialogue_anim_timer.start(80)
             else:
                 self._dialogue_phase = "typing_ai"
@@ -969,23 +1050,18 @@ class VirtualConsoleWidget(QFrame):
             partial = f"  {self._active_ai_full_text[:self._typing_char_idx]}"
             cursor = f'<span style="color:{ai_color};">▌</span>' if self._typing_char_idx < len(self._active_ai_full_text) else ""
             self._active_typing_html = self.format_line_html(partial, color=ai_color, bold=False, cursor_suffix=cursor)
-            self.render_log_view(active_line_html=self._active_typing_html)
+            self._set_live_block_html(self._active_typing_html)
 
             if self._typing_char_idx < len(self._active_ai_full_text):
                 self.dialogue_anim_timer.start(self._get_ai_typing_interval_ms())
             else:
                 final_ai_html = self.format_line_html(f"  {self._active_ai_full_text}", color=ai_color, bold=False)
-                insert_pos = (
-                    self._pending_dev_line_idx + 1
-                    if self._pending_dev_line_idx is not None
-                    else len(self._log_lines_html)
-                )
-                self._log_lines_html.insert(insert_pos, final_ai_html)
-                if len(self._log_lines_html) > 160:
+                self._set_live_block_html(final_ai_html)
+                self._log_lines_html.append(final_ai_html)
+                if len(self._log_lines_html) > self.MAX_LOG_LINES:
                     self._log_lines_html.pop(0)
 
                 self._reset_dialogue_state()
-                self.render_log_view()
 
     # ==================== 명령어 프롬프트 렌더링 & 입력 ====================
     @property
@@ -1118,48 +1194,35 @@ class VirtualConsoleWidget(QFrame):
             self._apply_prompt_border("#2ea043")
             self._pick_next_command()
         else:
-            # 오타 제출 시에는 효과음 재생하지 않음
             self._apply_prompt_border("#f85149")
             self.show_feedback("오타가 있거나 명령어가 완성되지 않았습니다.", is_error=True)
 
     def on_cooldown_blocked(self, cooldown_ms: int):
         self._play_sfx("cooldown_block")
         self._apply_prompt_border("#d29922")
-        self.lbl_status.setText(f"[BUFFER BUSY] 입력 지연 제한 중 ({cooldown_ms}ms)")
-        self.lbl_status.setStyleSheet("""
-            color: #d29922; font-family: 'Consolas', 'D2Coding', monospace;
-            font-size: 11px; font-weight: bold; padding-left: 2px;
-        """)
+        self._set_status_label(f"[BUFFER BUSY] 입력 지연 제한 중 ({cooldown_ms}ms)", "#d29922", bold=True)
         self.feedback_timer.start(400)
 
     def show_feedback(self, msg: str, is_error: bool = False):
         if self.is_dialogue_mode:
             return
         color = "#f85149" if is_error else "#3fb950"
-        self.lbl_status.setText(msg)
-        self.lbl_status.setStyleSheet(f"""
-            color: {color}; font-family: 'Consolas', 'D2Coding', monospace;
-            font-size: 11px; font-weight: bold; padding-left: 2px;
-        """)
+        self._set_status_label(msg, color, bold=True)
         self.feedback_timer.start(1100)
 
     def _reset_prompt_border(self):
         if self.is_dialogue_mode:
             return
         if getattr(self.game_state, "is_supervisor_mode", False):
-            self.lbl_status.setText("SUPERVISOR MODE // [ENTER/SPACE] 버퍼 수확  ·  [Q/W/E] 병목 냉각")
-            self.lbl_status.setStyleSheet("""
-                color: #79c0ff; font-family: 'Consolas', 'D2Coding', monospace;
-                font-size: 11px; padding-left: 2px;
-            """)
+            self._set_status_label(
+                "SUPERVISOR MODE // [ENTER/SPACE] 버퍼 수확  ·  [Q/W/E] 병목 냉각",
+                "#79c0ff",
+                bold=False,
+            )
             return
 
         if self.current_target and not self.current_target.startswith(self.typed_text):
             self._apply_prompt_border("#f85149")
         else:
             self._apply_prompt_border("#2ea043")
-        self.lbl_status.setText(f"Latency: {self.game_state.input_cooldown_ms}ms")
-        self.lbl_status.setStyleSheet("""
-            color: #8b949e; font-family: 'Consolas', 'D2Coding', monospace;
-            font-size: 11px; padding-left: 2px;
-        """)
+        self._set_status_label(f"Latency: {self.game_state.input_cooldown_ms}ms", "#8b949e", bold=False)

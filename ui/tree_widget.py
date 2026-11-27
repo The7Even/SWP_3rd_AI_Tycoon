@@ -2,12 +2,12 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QScrollArea, QPushButton, QLabel, QFrame
 )
 from PyQt6.QtCore import Qt, QPoint, QTimer, QPropertyAnimation, QEasingCurve
-from PyQt6.QtGui import QPainter, QPen, QColor, QFont
+from PyQt6.QtGui import QPainter, QPen, QColor, QFont, QPixmap, QBrush
 from core.number_format import format_number
 
 
 class TreeCanvas(QWidget):
-    """다크 회로도(도트 격자 + 직교 연결선 + 챕터 구분선) 기반 업그레이드 트리 캔버스"""
+    """다크 회로도(타일 QPixmap 도트 격자 + 직교 연결선 + 챕터 구분선) 기반 업그레이드 트리 캔버스"""
 
     CHAPTER_TITLES = {
         0: "TUTORIAL · 개발 환경 초기화",
@@ -22,10 +22,10 @@ class TreeCanvas(QWidget):
     }
 
     TYPE_COLORS = {
-        "active":  ("#b62324", "#da3633", "#ff7b72", "#f85149"),  # 액티브(좌): 코랄 레드
-        "passive": ("#196c2e", "#238636", "#56d364", "#3fb950"),  # 패시브(우): 에메랄드 그린
-        "common":  ("#1158c7", "#1f6feb", "#79c0ff", "#58a6ff"),  # 공통/중립(중): 일렉트릭 블루
-        "story":   ("#6e40c9", "#8957e5", "#d2a8ff", "#bc8cff"),  # 스토리/마일스톤: 네온 라벤더
+        "active":  ("#b62324", "#da3633", "#ff7b72", "#f85149"),
+        "passive": ("#196c2e", "#238636", "#56d364", "#3fb950"),
+        "common":  ("#1158c7", "#1f6feb", "#79c0ff", "#58a6ff"),
+        "story":   ("#6e40c9", "#8957e5", "#d2a8ff", "#bc8cff"),
     }
 
     def __init__(self, game_state, parent=None):
@@ -35,6 +35,16 @@ class TreeCanvas(QWidget):
         self.node_buttons: dict[str, QPushButton] = {}
         self.node_centers: dict[str, QPoint] = {}
         self.chapter_rows: dict[int, int] = {}
+        self._node_visual_cache: dict[str, tuple] = {}
+
+        # 16x16 도트 격자 타일을 단 한 번만 렌더링해 QBrush로 캐싱 (paintEvent 부하 제거)
+        tile = QPixmap(16, 16)
+        tile.fill(QColor("#0d1117"))
+        tp = QPainter(tile)
+        tp.setPen(QPen(QColor("#21262d"), 1.5))
+        tp.drawPoint(0, 0)
+        tp.end()
+        self._grid_brush = QBrush(tile)
 
         self.row_height = 108
         self.top_margin = 36
@@ -47,6 +57,7 @@ class TreeCanvas(QWidget):
             btn.deleteLater()
         self.node_buttons.clear()
         self.chapter_rows.clear()
+        self._node_visual_cache.clear()
 
         max_row = 1
         for upg in self.game_state.upgrades:
@@ -101,7 +112,6 @@ class TreeCanvas(QWidget):
         self.update()
 
     def get_frontier_y(self) -> int:
-        """현재 해금 가능(최전선) 노드들의 중심 Y좌표 반환. 모두 완료 시 최하단 노드 Y좌표 반환."""
         frontier_ys: list[int] = []
         purchased_ys: list[int] = []
 
@@ -124,14 +134,23 @@ class TreeCanvas(QWidget):
             self._build_nodes()
             self._reposition_nodes()
 
+        any_visual_changed = False
+
         for upg in self.game_state.upgrades:
             uid = upg["id"]
             btn = self.node_buttons[uid]
-            purchased = upg["purchased"]
+            purchased = bool(upg["purchased"])
             unlocked = self.game_state.can_unlock(uid)
             affordable = self.game_state.tokens >= upg["cost"]
             ntype = upg.get("type", "common")
             is_story = (ntype == "story" or isinstance(upg.get("story_event"), dict))
+
+            vis_state = (purchased, unlocked, affordable, is_story, ntype, upg["cost"])
+            if self._node_visual_cache.get(uid) == vis_state:
+                continue
+            self._node_visual_cache[uid] = vis_state
+            any_visual_changed = True
+
             bg_c, hover_c, border_c, wait_border = self.TYPE_COLORS.get(
                 "story" if is_story else ntype,
                 self.TYPE_COLORS["common"]
@@ -233,23 +252,17 @@ class TreeCanvas(QWidget):
                 """)
                 btn.setToolTip("이전 단계 업그레이드를 완료하면 해금됩니다.")
 
-        self.update()
+        if any_visual_changed:
+            self.update()
 
     def paintEvent(self, event):
         super().paintEvent(event)
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
-        painter.fillRect(self.rect(), QColor("#0d1117"))
-        dot_pen = QPen(QColor("#21262d"), 1.5)
-        painter.setPen(dot_pen)
-        rect = event.rect()
-        start_x = (rect.left() // 16) * 16
-        start_y = (rect.top() // 16) * 16
-        for x in range(start_x, rect.right() + 1, 16):
-            for y in range(start_y, rect.bottom() + 1, 16):
-                painter.drawPoint(x, y)
+        painter.fillRect(event.rect(), self._grid_brush)
 
+        upg_map = {u["id"]: u for u in self.game_state.upgrades}
         reached_chapters = set()
         for upg in self.game_state.upgrades:
             uid = upg["id"]
@@ -270,6 +283,10 @@ class TreeCanvas(QWidget):
                 title = self.CHAPTER_TITLES.get(chap, f"CHAPTER {chap}")
                 painter.drawText(14, y_line + 14, title)
 
+        pen_done = QPen(QColor("#3fb950"), 2.5)
+        pen_ready = QPen(QColor("#58a6ff"), 2.0)
+        pen_locked = QPen(QColor("#21262d"), 1.5, Qt.PenStyle.DashLine)
+
         for upg in self.game_state.upgrades:
             uid = upg["id"]
             p_end = self.node_centers.get(uid)
@@ -278,18 +295,17 @@ class TreeCanvas(QWidget):
 
             for req_id in upg["req"]:
                 p_start = self.node_centers.get(req_id)
-                req_node = next((u for u in self.game_state.upgrades if u["id"] == req_id), None)
+                req_node = upg_map.get(req_id)
                 if not p_start or not req_node:
                     continue
 
                 if req_node["purchased"] and upg["purchased"]:
-                    pen = QPen(QColor("#3fb950"), 2.5)
+                    painter.setPen(pen_done)
                 elif req_node["purchased"]:
-                    pen = QPen(QColor("#58a6ff"), 2.0)
+                    painter.setPen(pen_ready)
                 else:
-                    pen = QPen(QColor("#21262d"), 1.5, Qt.PenStyle.DashLine)
+                    painter.setPen(pen_locked)
 
-                painter.setPen(pen)
                 mid_y = (p_start.y() + p_end.y()) // 2
                 painter.drawLine(p_start.x(), p_start.y(), p_start.x(), mid_y)
                 painter.drawLine(p_start.x(), mid_y, p_end.x(), mid_y)
@@ -308,7 +324,6 @@ class UpgradeTreeWidget(QFrame):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        # 상단 헤더 (타이틀 + '◎ 현재 위치' 버튼 + 4색 범례)
         header = QFrame()
         header.setFixedHeight(58)
         header.setStyleSheet("background-color: #161b22; border-bottom: 1px solid #30363d;")

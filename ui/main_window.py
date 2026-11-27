@@ -15,7 +15,7 @@ from ui.window_style import apply_dark_titlebar
 
 
 class StoryEventDialog(QDialog):
-    """스토리 노드 해금 시 등장하는 챕터 스토리 연출 팝업 (1~15번 이벤트)"""
+    """스토리 노드 해금 시 등장하는 챕터 스토리 연출 팝업 (1~18번 이벤트)"""
 
     def __init__(self, story_data: dict, parent=None):
         super().__init__(parent)
@@ -432,6 +432,17 @@ class MainWindow(QMainWindow):
         self.sound_manager = SoundManager(settings_dir=self.save_manager.save_dir, parent=self)
         self.news_dialog = None
         self._was_tutorial_active = True
+        self._tree_refresh_queued = False
+
+        # UI 변경 감지용 캐시 (매 100ms CSS/텍스트 재파싱 차단)
+        self._last_ai_badge = ""
+        self._last_tokens_str = ""
+        self._last_cmd_str = ""
+        self._last_sec_str = ""
+        self._last_bench_str = ""
+        self._last_specs: dict[str, str] = {}
+        self._last_buff_sig: tuple | None = None
+        self._last_tut_step_sig: tuple | None = None
 
         self.news_toast_timer = QTimer(self)
         self.news_toast_timer.setSingleShot(True)
@@ -479,6 +490,9 @@ class MainWindow(QMainWindow):
                 Qt.Key.Key_Enter,
                 Qt.Key.Key_Space,
             ):
+                if event.isAutoRepeat():
+                    event.accept()
+                    return
                 self.console_widget.keyPressEvent(event)
                 return
         super().keyPressEvent(event)
@@ -535,6 +549,7 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):
         self.save_manager.save_auto(self.game_state.to_dict())
+        self.sound_manager.shutdown()
         event.accept()
 
     def _init_ui(self):
@@ -872,11 +887,25 @@ class MainWindow(QMainWindow):
     def _on_tick(self):
         self.game_state.add_passive_tokens(0.1)
 
+    def _flush_tree_refresh(self):
+        self._tree_refresh_queued = False
+        self.tree_widget.refresh_tree()
+
     def _sync_bottom_right_panel(self, force: bool = False):
         is_tut = self._is_tutorial_active()
-        upg_map = {u["id"]: u["purchased"] for u in self.game_state.upgrades}
 
         if is_tut:
+            upg_map = {u["id"]: u["purchased"] for u in self.game_state.upgrades[:4]}
+            tut_sig = (
+                bool(upg_map.get("tut_buffer", False)),
+                bool(upg_map.get("tut_act_key", False)),
+                bool(upg_map.get("tut_pas_pc", False)),
+                self.game_state.tokens >= 1,
+            )
+            if not force and self._was_tutorial_active and tut_sig == self._last_tut_step_sig:
+                return
+            self._last_tut_step_sig = tut_sig
+
             self.lbl_news_title.setText("DEV GUIDE")
             self.lbl_news_title.setStyleSheet(
                 "background-color: transparent; font-size: 13px; font-weight: bold; color: #58a6ff; border: none;"
@@ -884,8 +913,8 @@ class MainWindow(QMainWindow):
             self.lbl_unread_badge.hide()
             self.lbl_news_toast.hide()
 
-            if not upg_map.get("tut_buffer", False):
-                if self.game_state.tokens < 1:
+            if not tut_sig[0]:
+                if not tut_sig[3]:
                     self.mini_news_ticker.set_guide_items(
                         "[1/4] 콘솔에 명령어를 입력해 첫 1 Token을 확보하세요.",
                         "초기 입력 지연(200ms)으로 빠른 타자가 제한될 수 있습니다."
@@ -895,19 +924,20 @@ class MainWindow(QMainWindow):
                         "[2/4] 우측 트리의 [버퍼 최적화 (1 Tk)]를 클릭하세요.",
                         "입력 지연을 완화하고 다음 개발 경로를 개방합니다."
                     )
-            elif not (upg_map.get("tut_act_key", False) and upg_map.get("tut_pas_pc", False)):
+            elif not (tut_sig[1] and tut_sig[2]):
                 self.mini_news_ticker.set_guide_items(
                     "[3/4] 좌측(입력 매핑)과 우측(PC 조립) 노드를 모두 완료하세요.",
                     "붉은색(액티브): 입력 지연 단축·효율 / 녹색(패시브): 기본·자동 토큰 생산량 증가"
                 )
             else:
                 self.mini_news_ticker.set_guide_items(
-                    "[4/4] 10 Token을 모아 [AI 개발 착수]를 클릭하세요!",
+                    "[4/4] 6 Token을 모아 [AI 개발 착수]를 클릭하세요!",
                     "튜토리얼을 마치고 본격적인 AI 개발 스토리가 시작됩니다."
                 )
             self._was_tutorial_active = True
         else:
             if self._was_tutorial_active or force:
+                self._last_tut_step_sig = None
                 self.lbl_news_title.setText("NEWS")
                 self.lbl_news_title.setStyleSheet(
                     "background-color: transparent; font-size: 13px; font-weight: bold; color: #e6edf3; border: none;"
@@ -917,39 +947,43 @@ class MainWindow(QMainWindow):
                 self._was_tutorial_active = False
 
     def _update_rate_badges(self):
-        gs = self.game_state
-        buff = gs.active_news_buff
+        buff = self.game_state.active_news_buff
+        if not buff:
+            buff_sig = ("none",)
+        else:
+            buff_sig = (
+                buff.get("target"),
+                buff.get("mode", "flat"),
+                float(buff.get("value", 0.0)),
+                bool(buff.get("is_positive", True)),
+                max(1, int(round(buff.get("remaining_sec", 0)))),
+                buff.get("summary", ""),
+            )
 
-        self.lbl_cmd_buff_icon.hide()
-        self.lbl_sec_buff_icon.hide()
-        self.lbl_cmd_rate.setStyleSheet("""
+        # 버프 상태/초 단위가 그대로면 CSS 재파싱 생략
+        if self._last_buff_sig == buff_sig:
+            return
+        self._last_buff_sig = buff_sig
+
+        default_rate_style = """
             background-color: transparent; color: #58a6ff;
             font-family: 'Consolas', 'D2Coding', monospace; font-size: 13px; font-weight: bold; border: none;
-        """)
-        self.lbl_sec_rate.setStyleSheet("""
-            background-color: transparent; color: #58a6ff;
-            font-family: 'Consolas', 'D2Coding', monospace; font-size: 13px; font-weight: bold; border: none;
-        """)
-        self.lbl_cmd_rate.setToolTip("")
-        self.lbl_sec_rate.setToolTip("")
+        """
 
         if not buff:
+            self.lbl_cmd_buff_icon.hide()
+            self.lbl_sec_buff_icon.hide()
+            self.lbl_cmd_rate.setStyleSheet(default_rate_style)
+            self.lbl_sec_rate.setStyleSheet(default_rate_style)
+            self.lbl_cmd_rate.setToolTip("")
+            self.lbl_sec_rate.setToolTip("")
             return
 
-        target = buff.get("target")
-        mode = buff.get("mode", "flat")
-        val = float(buff.get("value", 0.0))
-        is_pos = bool(buff.get("is_positive", True))
-        rem = max(1, int(round(buff.get("remaining_sec", 0))))
-        summary = buff.get("summary", "")
-
+        target, mode, val, is_pos, rem, summary = buff_sig
         icon_char = "▲" if is_pos else "▼"
         sign = "+" if val >= 0 else "-"
         abs_val = abs(val)
-        if mode == "percent":
-            val_str = f"{sign}{int(abs_val)}%"
-        else:
-            val_str = f"{sign}{format_number(abs_val)}"
+        val_str = f"{sign}{int(abs_val)}%" if mode == "percent" else f"{sign}{format_number(abs_val)}"
 
         if is_pos:
             tag_bg, tag_bd, tag_fg = "#12261e", "#2ea043", "#7ee787"
@@ -972,39 +1006,71 @@ class MainWindow(QMainWindow):
         """
 
         badge_text = f"{icon_char} {val_str} ({rem}s)"
-        tooltip_text = summary
 
         if target == "command_rate":
+            self.lbl_sec_buff_icon.hide()
+            self.lbl_sec_rate.setStyleSheet(default_rate_style)
+            self.lbl_sec_rate.setToolTip("")
+
             self.lbl_cmd_buff_icon.setText(badge_text)
             self.lbl_cmd_buff_icon.setStyleSheet(tag_style)
-            self.lbl_cmd_buff_icon.setToolTip(tooltip_text)
+            self.lbl_cmd_buff_icon.setToolTip(summary)
             self.lbl_cmd_buff_icon.show()
             self.lbl_cmd_rate.setStyleSheet(rate_style)
-            self.lbl_cmd_rate.setToolTip(tooltip_text)
+            self.lbl_cmd_rate.setToolTip(summary)
         elif target == "passive_rate":
+            self.lbl_cmd_buff_icon.hide()
+            self.lbl_cmd_rate.setStyleSheet(default_rate_style)
+            self.lbl_cmd_rate.setToolTip("")
+
             self.lbl_sec_buff_icon.setText(badge_text)
             self.lbl_sec_buff_icon.setStyleSheet(tag_style)
-            self.lbl_sec_buff_icon.setToolTip(tooltip_text)
+            self.lbl_sec_buff_icon.setToolTip(summary)
             self.lbl_sec_buff_icon.show()
             self.lbl_sec_rate.setStyleSheet(rate_style)
-            self.lbl_sec_rate.setToolTip(tooltip_text)
+            self.lbl_sec_rate.setToolTip(summary)
 
     def _update_ui(self):
         gs = self.game_state
-        self.lbl_ai_badge.setText(f"{gs.ai_name} · {gs.get_ai_version()}")
-        self.lbl_tokens.setText(f"{format_number(gs.tokens)} Token")
-        self.lbl_cmd_rate.setText(f"{format_number(gs.effective_tokens_per_command)} Tk/Command")
-        self.lbl_sec_rate.setText(f"{format_number(gs.effective_tokens_per_sec)} Tk/s")
+
+        badge_txt = f"{gs.ai_name} · {gs.get_ai_version()}"
+        if badge_txt != self._last_ai_badge:
+            self._last_ai_badge = badge_txt
+            self.lbl_ai_badge.setText(badge_txt)
+
+        tok_txt = f"{format_number(gs.tokens)} Token"
+        if tok_txt != self._last_tokens_str:
+            self._last_tokens_str = tok_txt
+            self.lbl_tokens.setText(tok_txt)
+
+        cmd_txt = f"{format_number(gs.effective_tokens_per_command)} Tk/Command"
+        if cmd_txt != self._last_cmd_str:
+            self._last_cmd_str = cmd_txt
+            self.lbl_cmd_rate.setText(cmd_txt)
+
+        sec_txt = f"{format_number(gs.effective_tokens_per_sec)} Tk/s"
+        if sec_txt != self._last_sec_str:
+            self._last_sec_str = sec_txt
+            self.lbl_sec_rate.setText(sec_txt)
+
         self._update_rate_badges()
 
         s = gs.specs
         for key in ("CPU", "GPU", "RAM", "STORAGE"):
-            if key in self.spec_value_labels:
-                self.spec_value_labels[key].setText(str(s.get(key, "-")))
-        self.lbl_bench.setText(f"{format_number(s['BENCH_SCORE'])}")
+            val = str(s.get(key, "-"))
+            if self._last_specs.get(key) != val:
+                self._last_specs[key] = val
+                self.spec_value_labels[key].setText(val)
+
+        bench_txt = f"{format_number(s['BENCH_SCORE'])}"
+        if bench_txt != self._last_bench_str:
+            self._last_bench_str = bench_txt
+            self.lbl_bench.setText(bench_txt)
 
         self._sync_bottom_right_panel(force=False)
-        self.tree_widget.refresh_tree()
+        if not self._tree_refresh_queued:
+            self._tree_refresh_queued = True
+            QTimer.singleShot(100, self._flush_tree_refresh)
 
     def _update_unread_badge(self, count: int):
         if self._is_tutorial_active() or count <= 0:

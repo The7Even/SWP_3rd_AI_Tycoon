@@ -137,9 +137,20 @@ class NewsDialog(QDialog):
 
         self._auto_open_guard_until = 0.0
         self._top_card_anim: QPropertyAnimation | None = None
+        self._activity_cards: list[dict] = []
+        self._last_dex_sig: tuple | None = None
+        self._live_refresh_pending: bool = False
+
+        self._live_refresh_timer = QTimer(self)
+        self._live_refresh_timer.setSingleShot(True)
+        self._live_refresh_timer.timeout.connect(self._flush_live_refresh)
 
         self._init_ui()
         self._connect_signals()
+        self.refresh_all()
+
+    def showEvent(self, event):
+        super().showEvent(event)
         self.refresh_all()
 
     def keyPressEvent(self, event):
@@ -427,7 +438,7 @@ class NewsDialog(QDialog):
         auto_layout.addLayout(auto_btn_row)
         layout.addWidget(sec_auto)
 
-        # 2. 분기 저장 슬롯 (다크 진행도 미리보기 카드)
+        # 2. 분기 저장 슬롯
         sec_branch = QFrame()
         sec_branch.setStyleSheet(card_style)
         branch_layout = QVBoxLayout(sec_branch)
@@ -695,6 +706,7 @@ class NewsDialog(QDialog):
                 parent_win = self.parent()
                 if parent_win and hasattr(parent_win, "console_widget") and not self.game_state.is_ending_locked:
                     parent_win.console_widget.start_boot_sequence()
+                self._last_dex_sig = None
                 self.refresh_all()
                 QMessageBox.information(self, "분기 복원 완료", f"슬롯 {slot} 시점으로 성공적으로 복원되었습니다.")
             else:
@@ -717,6 +729,7 @@ class NewsDialog(QDialog):
             parent_win = self.parent()
             if parent_win and hasattr(parent_win, "console_widget") and not self.game_state.is_ending_locked:
                 parent_win.console_widget.start_boot_sequence()
+            self._last_dex_sig = None
             self.refresh_all()
             QMessageBox.information(self, "복원 완료", "Base64 코드로부터 게임 데이터를 성공적으로 불러왔습니다.")
         else:
@@ -740,16 +753,40 @@ class NewsDialog(QDialog):
                     parent_win.news_timer.start(45000)
                 if hasattr(parent_win, "_sync_bottom_right_panel"):
                     parent_win._sync_bottom_right_panel(force=True)
+            self._last_dex_sig = None
             self.refresh_all()
             QMessageBox.information(self, "초기화 완료", "모든 진행 데이터가 초기화되었습니다.")
 
     def _connect_signals(self):
         self.game_state.news_added.connect(self._on_news_updated_in_dialog)
-        self.game_state.state_changed.connect(self.refresh_activities_and_dex)
+        self.game_state.state_changed.connect(self._on_state_changed_throttled)
+
+    def _on_state_changed_throttled(self):
+        # 팝업이 닫혀 있을 때는 CPU/위젯 재생성 부하 완전 차단
+        if not self.isVisible():
+            return
+        cur_tab = self.stack.currentIndex()
+        if cur_tab not in (1, 2):
+            return
+        if not self._live_refresh_pending:
+            self._live_refresh_pending = True
+            self._live_refresh_timer.start(250)
+
+    def _flush_live_refresh(self):
+        self._live_refresh_pending = False
+        if not self.isVisible():
+            return
+        cur_tab = self.stack.currentIndex()
+        if cur_tab == 1:
+            self._refresh_activities()
+        elif cur_tab == 2:
+            self._refresh_dex()
 
     def _on_news_updated_in_dialog(self, _news_item: dict):
+        if not self.isVisible():
+            return
         self.refresh_news()
-        if self.isVisible() and self.stack.currentIndex() == 0:
+        if self.stack.currentIndex() == 0:
             self.game_state.clear_unread_news()
             self._animate_first_news_card()
 
@@ -789,7 +826,15 @@ class NewsDialog(QDialog):
                         color: #e6edf3;
                     }
                 """)
-        self.refresh_all()
+
+        if index == 0:
+            self.refresh_news()
+        elif index == 1:
+            self._refresh_activities()
+        elif index == 2:
+            self._refresh_dex()
+        elif index == 3:
+            self.refresh_settings()
 
     def refresh_all(self):
         self.refresh_news()
@@ -932,44 +977,83 @@ class NewsDialog(QDialog):
             self.news_list_layout.addWidget(card)
 
     def refresh_activities_and_dex(self):
-        self._clear_layout(self.activity_layout)
-        for act in self.game_state.ai_activities:
-            box = QFrame()
+        self._refresh_activities()
+        self._refresh_dex()
+
+    def _refresh_activities(self):
+        acts = self.game_state.ai_activities
+        if len(self._activity_cards) != len(acts):
+            self._clear_layout(self.activity_layout)
+            self._activity_cards.clear()
+            for _ in acts:
+                box = QFrame()
+                row = QHBoxLayout(box)
+                lbl_name = QLabel()
+                lbl_rate = QLabel()
+                row.addWidget(lbl_name)
+                row.addStretch()
+                row.addWidget(lbl_rate)
+                self.activity_layout.addWidget(box)
+                self._activity_cards.append({
+                    "box": box,
+                    "lbl_name": lbl_name,
+                    "lbl_rate": lbl_rate,
+                    "last_active": None,
+                    "last_name": "",
+                    "last_rate": "",
+                })
+
+        for card_info, act in zip(self._activity_cards, acts):
             is_active = (act["status"] == "가동 중")
-            box.setStyleSheet(f"""
-                QFrame {{
-                    background-color: {'#12261e' if is_active else '#161b22'};
-                    border: 1px solid {'#2ea043' if is_active else '#30363d'};
-                    border-radius: 6px;
-                    padding: 10px 12px;
-                }}
-            """)
-            row = QHBoxLayout(box)
-            lbl_name = QLabel(f"● {act['name']}")
-            lbl_name.setStyleSheet(f"""
-                background-color: transparent;
-                font-weight: bold;
-                font-size: 13.5px;
-                color: {'#e6edf3' if is_active else '#8b949e'};
-                border: none;
-            """)
-            lbl_rate = QLabel(f"[{act['status']}] {act['rate']}")
-            lbl_rate.setStyleSheet(f"""
-                background-color: transparent;
-                font-family: 'Consolas', 'D2Coding', monospace;
-                font-weight: bold;
-                font-size: 12.5px;
-                color: {'#7ee787' if is_active else '#6e7681'};
-                border: none;
-            """)
-            row.addWidget(lbl_name)
-            row.addStretch()
-            row.addWidget(lbl_rate)
-            self.activity_layout.addWidget(box)
+            name_text = f"● {act['name']}"
+            rate_text = f"[{act['status']}] {act['rate']}"
+
+            if card_info["last_name"] != name_text:
+                card_info["last_name"] = name_text
+                card_info["lbl_name"].setText(name_text)
+
+            if card_info["last_rate"] != rate_text:
+                card_info["last_rate"] = rate_text
+                card_info["lbl_rate"].setText(rate_text)
+
+            if card_info["last_active"] != is_active:
+                card_info["last_active"] = is_active
+                card_info["box"].setStyleSheet(f"""
+                    QFrame {{
+                        background-color: {'#12261e' if is_active else '#161b22'};
+                        border: 1px solid {'#2ea043' if is_active else '#30363d'};
+                        border-radius: 6px;
+                        padding: 10px 12px;
+                    }}
+                """)
+                card_info["lbl_name"].setStyleSheet(f"""
+                    background-color: transparent;
+                    font-weight: bold;
+                    font-size: 13.5px;
+                    color: {'#e6edf3' if is_active else '#8b949e'};
+                    border: none;
+                """)
+                card_info["lbl_rate"].setStyleSheet(f"""
+                    background-color: transparent;
+                    font-family: 'Consolas', 'D2Coding', monospace;
+                    font-weight: bold;
+                    font-size: 12.5px;
+                    color: {'#7ee787' if is_active else '#6e7681'};
+                    border: none;
+                """)
+
+    def _refresh_dex(self):
+        endings_unlocked = self.game_state.unlocked_endings & self.game_state.VALID_ENDING_IDS
+        dex_sig = (
+            tuple(sorted(endings_unlocked)),
+            tuple(bool(d["unlocked"]) for d in self.game_state.encyclopedia),
+        )
+        if self._last_dex_sig == dex_sig:
+            return
+        self._last_dex_sig = dex_sig
 
         self._clear_layout(self.dex_layout)
 
-        endings_unlocked = self.game_state.unlocked_endings & self.game_state.VALID_ENDING_IDS
         story_unlocked_cnt = sum(1 for d in self.game_state.encyclopedia if d["unlocked"])
         story_total_cnt = len(self.game_state.encyclopedia)
         endings_total_cnt = len(self.game_state.ENDINGS_CATALOG)
