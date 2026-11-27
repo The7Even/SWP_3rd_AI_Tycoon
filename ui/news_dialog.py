@@ -3,7 +3,7 @@ import time
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QScrollArea, QWidget, QFrame, QStackedWidget,
-    QTextEdit, QMessageBox, QFileDialog, QApplication, QProgressBar
+    QTextEdit, QMessageBox, QFileDialog, QApplication, QProgressBar, QSlider
 )
 from PyQt6.QtCore import Qt, QPropertyAnimation, QPoint, QEasingCurve, QTimer
 from core.save_preview import get_save_slot_preview
@@ -119,10 +119,11 @@ class NewsCardWidget(QFrame):
 class NewsDialog(QDialog):
     """다크 확장 팝업창 (최근 뉴스 / AI 활동 / 도감 & 엔딩 기록 / 설정 4단 탭 지원)"""
 
-    def __init__(self, game_state, save_manager, parent=None):
+    def __init__(self, game_state, save_manager, parent=None, sound_manager=None):
         super().__init__(parent)
         self.game_state = game_state
         self.save_manager = save_manager
+        self.sound_manager = sound_manager
         self.setWindowTitle("AI 키우기 - 뉴스 / 도감 / 설정")
         apply_dark_titlebar(self, "#161b22")
         self.resize(820, 620)
@@ -328,6 +329,71 @@ class NewsDialog(QDialog):
             }
             QPushButton:hover { background-color: #30363d; border-color: #8b949e; }
         """
+
+        # 0. 오디오 및 효과음(SFX) 설정
+        sec_audio = QFrame()
+        sec_audio.setStyleSheet(card_style)
+        audio_layout = QVBoxLayout(sec_audio)
+        audio_layout.setSpacing(10)
+
+        lbl_audio_title = QLabel("0. 오디오 및 합성 효과음(SFX) 설정")
+        lbl_audio_title.setStyleSheet(
+            "background-color: transparent; font-size: 14px; font-weight: bold; color: #f0f6fc; border: none;"
+        )
+        audio_layout.addWidget(lbl_audio_title)
+
+        audio_row = QHBoxLayout()
+        audio_row.setSpacing(10)
+
+        self.btn_mute_toggle = QPushButton("🔊 음소거 해제됨")
+        self.btn_mute_toggle.setFixedWidth(130)
+        self.btn_mute_toggle.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_mute_toggle.clicked.connect(self._on_toggle_mute)
+
+        self.slider_volume = QSlider(Qt.Orientation.Horizontal)
+        self.slider_volume.setRange(0, 100)
+        self.slider_volume.setValue(65)
+        self.slider_volume.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.slider_volume.setStyleSheet("""
+            QSlider::groove:horizontal {
+                background: #21262d;
+                height: 6px;
+                border-radius: 3px;
+            }
+            QSlider::sub-page:horizontal {
+                background: #388bfd;
+                height: 6px;
+                border-radius: 3px;
+            }
+            QSlider::handle:horizontal {
+                background: #79c0ff;
+                border: 1px solid #1f6feb;
+                width: 14px;
+                height: 14px;
+                margin: -4px 0;
+                border-radius: 7px;
+            }
+        """)
+        self.slider_volume.valueChanged.connect(self._on_volume_changed)
+
+        self.lbl_volume_pct = QLabel("65%")
+        self.lbl_volume_pct.setFixedWidth(44)
+        self.lbl_volume_pct.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        self.lbl_volume_pct.setStyleSheet(
+            "background-color: transparent; font-family: 'Consolas', monospace; font-size: 12px; font-weight: bold; color: #79c0ff; border: none;"
+        )
+
+        btn_test_sfx = QPushButton("테스트 재생")
+        btn_test_sfx.setStyleSheet(btn_normal_style)
+        btn_test_sfx.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_test_sfx.clicked.connect(self._on_test_sfx)
+
+        audio_row.addWidget(self.btn_mute_toggle)
+        audio_row.addWidget(self.slider_volume, stretch=1)
+        audio_row.addWidget(self.lbl_volume_pct)
+        audio_row.addWidget(btn_test_sfx)
+        audio_layout.addLayout(audio_row)
+        layout.addWidget(sec_audio)
 
         # 1. 자동 저장 및 백업 관리
         sec_auto = QFrame()
@@ -549,6 +615,23 @@ class NewsDialog(QDialog):
 
         return container
 
+    def _on_toggle_mute(self):
+        if self.sound_manager is None:
+            return
+        self.sound_manager.set_muted(not self.sound_manager.muted)
+        self.refresh_settings()
+        if not self.sound_manager.muted:
+            self.sound_manager.play("cmd_done")
+
+    def _on_volume_changed(self, value: int):
+        self.lbl_volume_pct.setText(f"{value}%")
+        if self.sound_manager is not None:
+            self.sound_manager.set_volume(value / 100.0)
+
+    def _on_test_sfx(self):
+        if self.sound_manager is not None:
+            self.sound_manager.play("harvest_sync")
+
     def _get_branch_save_path(self, slot: int) -> str:
         if hasattr(self.save_manager, "get_branch_path"):
             return self.save_manager.get_branch_path(slot)
@@ -714,6 +797,32 @@ class NewsDialog(QDialog):
         self.refresh_settings()
 
     def refresh_settings(self):
+        if self.sound_manager is not None and hasattr(self, "btn_mute_toggle"):
+            vol_pct = int(round(self.sound_manager.volume * 100))
+            self.slider_volume.blockSignals(True)
+            self.slider_volume.setValue(vol_pct)
+            self.slider_volume.blockSignals(False)
+            self.lbl_volume_pct.setText(f"{vol_pct}%")
+
+            if self.sound_manager.muted:
+                self.btn_mute_toggle.setText("🔇 음소거 중")
+                self.btn_mute_toggle.setStyleSheet("""
+                    QPushButton {
+                        background-color: #2c1619; color: #ffa198;
+                        border: 1px solid #f85149; border-radius: 4px;
+                        padding: 6px 10px; font-weight: bold; font-size: 12px;
+                    }
+                """)
+            else:
+                self.btn_mute_toggle.setText("🔊 효과음 켜짐")
+                self.btn_mute_toggle.setStyleSheet("""
+                    QPushButton {
+                        background-color: #12261e; color: #7ee787;
+                        border: 1px solid #2ea043; border-radius: 4px;
+                        padding: 6px 10px; font-weight: bold; font-size: 12px;
+                    }
+                """)
+
         if hasattr(self, "lbl_save_status"):
             self.lbl_save_status.setText(
                 f"최근 저장: {self.save_manager.last_saved_time} | 저장 경로: {os.path.abspath(self.save_manager.save_dir)}"
@@ -858,7 +967,6 @@ class NewsDialog(QDialog):
             row.addWidget(lbl_rate)
             self.activity_layout.addWidget(box)
 
-        # 도감 & 영구 엔딩 컬렉션 표시 (총 21종 통합 게이지 포함)
         self._clear_layout(self.dex_layout)
 
         endings_unlocked = self.game_state.unlocked_endings & self.game_state.VALID_ENDING_IDS
@@ -870,7 +978,6 @@ class NewsDialog(QDialog):
         all_total = story_total_cnt + endings_total_cnt
         pct = int((all_unlocked / all_total) * 100) if all_total > 0 else 0
 
-        # 통합 달성률 게이지 카드
         gauge_card = QFrame()
         gauge_card.setStyleSheet("""
             QFrame {
@@ -915,7 +1022,6 @@ class NewsDialog(QDialog):
         g_vbox.addWidget(pbar)
         self.dex_layout.addWidget(gauge_card)
 
-        # 1. 엔딩 컬렉션 섹션
         basic_count = self.game_state.get_basic_ending_count()
         lbl_end_header = QLabel(
             f"엔딩 컬렉션: {basic_count} / 4 달성"
@@ -965,7 +1071,6 @@ class NewsDialog(QDialog):
             v.addWidget(lbl_d)
             self.dex_layout.addWidget(card)
 
-        # 2. 수집 도감 섹션
         lbl_progress = QLabel(f"연대기 도감: {story_unlocked_cnt} / {story_total_cnt}")
         lbl_progress.setStyleSheet(
             "background-color: transparent; font-size: 12.5px; font-weight: bold; color: #58a6ff; margin-top: 8px;"

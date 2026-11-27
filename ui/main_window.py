@@ -6,6 +6,7 @@ from PyQt6.QtCore import Qt, QTimer, QPropertyAnimation, QParallelAnimationGroup
 from PyQt6.QtGui import QFontMetrics
 from core.game_state import GameState
 from core.save_manager import SaveManager
+from core.sound_manager import SoundManager
 from core.number_format import format_number
 from ui.console_widget import VirtualConsoleWidget
 from ui.tree_widget import UpgradeTreeWidget
@@ -428,6 +429,7 @@ class MainWindow(QMainWindow):
 
         self.game_state = GameState()
         self.save_manager = SaveManager()
+        self.sound_manager = SoundManager(settings_dir=self.save_manager.save_dir, parent=self)
         self.news_dialog = None
         self._was_tutorial_active = True
 
@@ -444,6 +446,9 @@ class MainWindow(QMainWindow):
         self.autosave_timer.timeout.connect(self._on_autosave_tick)
 
         self._init_ui()
+        self.console_widget.set_sound_manager(self.sound_manager)
+        self.tree_widget.set_sound_manager(self.sound_manager)
+
         self.news_toast_timer.timeout.connect(lambda: self.lbl_news_toast.hide())
         self._connect_signals()
 
@@ -828,10 +833,12 @@ class MainWindow(QMainWindow):
             self.game_state.set_ai_name(self.game_state.ai_name)
 
     def _on_story_event_triggered(self, story_data: dict):
+        self.sound_manager.play("story_unlock")
         dlg = StoryEventDialog(story_data, self)
         dlg.exec()
 
     def _on_singularity_reached(self):
+        self.sound_manager.play("glitch")
         if hasattr(self, "news_timer"):
             self.news_timer.stop()
         self.console_widget.start_singularity_dialogue()
@@ -986,10 +993,7 @@ class MainWindow(QMainWindow):
         gs = self.game_state
         self.lbl_ai_badge.setText(f"{gs.ai_name} · {gs.get_ai_version()}")
         self.lbl_tokens.setText(f"{format_number(gs.tokens)} Token")
-        if gs.is_supervisor_mode:
-            self.lbl_cmd_rate.setText(f"{format_number(gs.effective_tokens_per_command)} Tk/Node")
-        else:
-            self.lbl_cmd_rate.setText(f"{format_number(gs.effective_tokens_per_command)} Tk/Command")
+        self.lbl_cmd_rate.setText(f"{format_number(gs.effective_tokens_per_command)} Tk/Command")
         self.lbl_sec_rate.setText(f"{format_number(gs.effective_tokens_per_sec)} Tk/s")
         self._update_rate_badges()
 
@@ -1023,6 +1027,7 @@ class MainWindow(QMainWindow):
         else:
             category = news_item.get("category", "info")
             if category == "danger":
+                self.sound_manager.play("news_bad")
                 self.lbl_news_toast.setText("악재 속보 도착")
                 self.lbl_news_toast.setStyleSheet("""
                     background-color: #2c1619;
@@ -1034,6 +1039,7 @@ class MainWindow(QMainWindow):
                     font-weight: bold;
                 """)
             elif category == "positive":
+                self.sound_manager.play("news_good")
                 self.lbl_news_toast.setText("호재 뉴스 도착")
                 self.lbl_news_toast.setStyleSheet("""
                     background-color: #12261e;
@@ -1060,7 +1066,7 @@ class MainWindow(QMainWindow):
 
     def _show_news_popup(self, auto_triggered: bool = False):
         if self.news_dialog is None:
-            self.news_dialog = NewsDialog(self.game_state, self.save_manager, self)
+            self.news_dialog = NewsDialog(self.game_state, self.save_manager, self, sound_manager=self.sound_manager)
 
         self.news_dialog.open_recent_news(
             auto_triggered=auto_triggered,

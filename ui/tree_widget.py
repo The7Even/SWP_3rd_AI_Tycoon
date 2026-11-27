@@ -1,7 +1,7 @@
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QScrollArea, QPushButton, QLabel, QFrame
 )
-from PyQt6.QtCore import Qt, QPoint
+from PyQt6.QtCore import Qt, QPoint, QTimer, QPropertyAnimation, QEasingCurve
 from PyQt6.QtGui import QPainter, QPen, QColor, QFont
 from core.number_format import format_number
 
@@ -21,7 +21,6 @@ class TreeCanvas(QWidget):
         8: "CHAPTER 8 · 특이점 (SINGULARITY)"
     }
 
-    # 다크 UI 전용 노드 타입별 색상: (구매가능 배경, 호버 배경, 구매가능 테두리, 대기 테두리)
     TYPE_COLORS = {
         "active":  ("#b62324", "#da3633", "#ff7b72", "#f85149"),  # 액티브(좌): 코랄 레드
         "passive": ("#196c2e", "#238636", "#56d364", "#3fb950"),  # 패시브(우): 에메랄드 그린
@@ -32,6 +31,7 @@ class TreeCanvas(QWidget):
     def __init__(self, game_state, parent=None):
         super().__init__(parent)
         self.game_state = game_state
+        self.sound_manager = None
         self.node_buttons: dict[str, QPushButton] = {}
         self.node_centers: dict[str, QPoint] = {}
         self.chapter_rows: dict[int, int] = {}
@@ -71,6 +71,8 @@ class TreeCanvas(QWidget):
 
     def _on_node_clicked(self, upgrade_id: str):
         if self.game_state.purchase_upgrade(upgrade_id):
+            if self.sound_manager is not None:
+                self.sound_manager.play("upgrade_buy")
             self.update_node_states()
 
     def resizeEvent(self, event):
@@ -97,6 +99,25 @@ class TreeCanvas(QWidget):
             self.node_centers[uid] = QPoint(cx, cy)
 
         self.update()
+
+    def get_frontier_y(self) -> int:
+        """현재 해금 가능(최전선) 노드들의 중심 Y좌표 반환. 모두 완료 시 최하단 노드 Y좌표 반환."""
+        frontier_ys: list[int] = []
+        purchased_ys: list[int] = []
+
+        for upg in self.game_state.upgrades:
+            uid = upg["id"]
+            cy = self.top_margin + (int(upg.get("row", 1)) - 1) * self.row_height + 44
+            if upg.get("purchased", False):
+                purchased_ys.append(cy)
+            elif self.game_state.can_unlock(uid):
+                frontier_ys.append(cy)
+
+        if frontier_ys:
+            return int(sum(frontier_ys) / len(frontier_ys))
+        if purchased_ys:
+            return max(purchased_ys)
+        return self.top_margin + 44
 
     def update_node_states(self):
         if len(self.node_buttons) != len(self.game_state.upgrades):
@@ -219,7 +240,6 @@ class TreeCanvas(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
-        # 0. 다크 배경 및 미세 도트 격자 패턴 (16px 간격)
         painter.fillRect(self.rect(), QColor("#0d1117"))
         dot_pen = QPen(QColor("#21262d"), 1.5)
         painter.setPen(dot_pen)
@@ -230,14 +250,12 @@ class TreeCanvas(QWidget):
             for y in range(start_y, rect.bottom() + 1, 16):
                 painter.drawPoint(x, y)
 
-        # 도달(해금 또는 구매)한 챕터 판별
         reached_chapters = set()
         for upg in self.game_state.upgrades:
             uid = upg["id"]
             if upg["purchased"] or self.game_state.can_unlock(uid):
                 reached_chapters.add(int(upg.get("chapter", 1)))
 
-        # 1. 챕터 구분선 및 도달 챕터 제목
         header_font = QFont("Malgun Gothic", 8, QFont.Weight.Bold)
         painter.setFont(header_font)
         for chap in sorted(self.chapter_rows.keys()):
@@ -252,7 +270,6 @@ class TreeCanvas(QWidget):
                 title = self.CHAPTER_TITLES.get(chap, f"CHAPTER {chap}")
                 painter.drawText(14, y_line + 14, title)
 
-        # 2. 트리 전체 직교 연결선 렌더링
         for upg in self.game_state.upgrades:
             uid = upg["id"]
             p_end = self.node_centers.get(uid)
@@ -283,31 +300,63 @@ class UpgradeTreeWidget(QFrame):
     def __init__(self, game_state):
         super().__init__()
         self.game_state = game_state
+        self._last_frontier_sig: tuple[str, ...] | None = None
+        self._scroll_anim: QPropertyAnimation | None = None
         self.setStyleSheet("UpgradeTreeWidget { background-color: #0d1117; border-left: 1px solid #30363d; }")
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        # 상단 헤더 (타이틀 + 4색 범례)
+        # 상단 헤더 (타이틀 + '◎ 현재 위치' 버튼 + 4색 범례)
         header = QFrame()
         header.setFixedHeight(58)
         header.setStyleSheet("background-color: #161b22; border-bottom: 1px solid #30363d;")
         header_vbox = QVBoxLayout(header)
-        header_vbox.setContentsMargins(8, 6, 8, 6)
+        header_vbox.setContentsMargins(10, 6, 10, 6)
         header_vbox.setSpacing(3)
 
+        title_row = QHBoxLayout()
+        title_row.setContentsMargins(0, 0, 0, 0)
+        title_row.setSpacing(4)
+
         lbl_title = QLabel("UPGRADE TREE")
-        lbl_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lbl_title.setStyleSheet("""
             background-color: transparent;
-            font-size: 14px;
+            font-size: 13px;
             font-weight: bold;
-            letter-spacing: 1px;
+            letter-spacing: 0.8px;
             color: #e6edf3;
             border: none;
         """)
-        header_vbox.addWidget(lbl_title)
+
+        self.btn_focus_frontier = QPushButton("◎ 현재 위치")
+        self.btn_focus_frontier.setFixedHeight(20)
+        self.btn_focus_frontier.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.btn_focus_frontier.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_focus_frontier.setToolTip("현재 해금 가능한 최전선 업그레이드 위치로 이동")
+        self.btn_focus_frontier.setStyleSheet("""
+            QPushButton {
+                background-color: #21262d;
+                color: #79c0ff;
+                border: 1px solid #30363d;
+                border-radius: 4px;
+                padding: 0px 7px;
+                font-size: 10.5px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #13233a;
+                border-color: #58a6ff;
+                color: #ffffff;
+            }
+        """)
+        self.btn_focus_frontier.clicked.connect(lambda: self.scroll_to_frontier(smooth=True))
+
+        title_row.addWidget(lbl_title)
+        title_row.addStretch()
+        title_row.addWidget(self.btn_focus_frontier)
+        header_vbox.addLayout(title_row)
 
         legend_row = QHBoxLayout()
         legend_row.setContentsMargins(0, 0, 0, 0)
@@ -331,11 +380,11 @@ class UpgradeTreeWidget(QFrame):
 
         layout.addWidget(header)
 
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        scroll.setStyleSheet("""
+        self.scroll = QScrollArea()
+        self.scroll.setWidgetResizable(True)
+        self.scroll.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.scroll.setStyleSheet("""
             QScrollArea {
                 border: none;
                 background-color: #0d1117;
@@ -356,8 +405,52 @@ class UpgradeTreeWidget(QFrame):
         """)
 
         self.canvas = TreeCanvas(self.game_state)
-        scroll.setWidget(self.canvas)
-        layout.addWidget(scroll)
+        self.scroll.setWidget(self.canvas)
+        layout.addWidget(self.scroll)
+
+        QTimer.singleShot(60, lambda: self.scroll_to_frontier(smooth=False))
+
+    def set_sound_manager(self, sound_manager):
+        self.canvas.sound_manager = sound_manager
+
+    def _compute_frontier_signature(self) -> tuple[str, ...]:
+        unlocked = sorted(
+            u["id"] for u in self.game_state.upgrades
+            if not u.get("purchased", False) and self.game_state.can_unlock(u["id"])
+        )
+        if unlocked:
+            return tuple(unlocked)
+        purchased = sorted(u["id"] for u in self.game_state.upgrades if u.get("purchased", False))
+        return tuple(purchased[-2:])
+
+    def scroll_to_frontier(self, smooth: bool = True):
+        sb = self.scroll.verticalScrollBar()
+        if not sb:
+            return
+
+        target_y = self.canvas.get_frontier_y()
+        viewport_h = max(120, self.scroll.viewport().height())
+        desired = max(sb.minimum(), min(sb.maximum(), target_y - int(viewport_h * 0.42)))
+
+        if self._scroll_anim and self._scroll_anim.state() == QPropertyAnimation.State.Running:
+            self._scroll_anim.stop()
+
+        if not smooth or abs(sb.value() - desired) < 6:
+            sb.setValue(desired)
+            return
+
+        anim = QPropertyAnimation(sb, b"value", self)
+        anim.setDuration(260)
+        anim.setStartValue(sb.value())
+        anim.setEndValue(desired)
+        anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self._scroll_anim = anim
+        anim.start()
 
     def refresh_tree(self):
         self.canvas.update_node_states()
+        sig = self._compute_frontier_signature()
+        if sig != self._last_frontier_sig:
+            is_initial = (self._last_frontier_sig is None)
+            self._last_frontier_sig = sig
+            QTimer.singleShot(20, lambda: self.scroll_to_frontier(smooth=not is_initial))

@@ -380,6 +380,8 @@ class SingularityDialogueController(QObject):
     def _reveal_glitch_choice(self):
         if not self._pending_glitch_choice:
             return
+        if getattr(self.console, "sound_manager", None):
+            self.console.sound_manager.play("glitch")
         self.console.append_log("[ERR_0x7F] 4개의 평행 시뮬레이션 잔향 충돌... 미확인 응답 벡터 감지.", color="#bc8cff", bold=True)
 
         cb = self._pending_glitch_choice["callback"]

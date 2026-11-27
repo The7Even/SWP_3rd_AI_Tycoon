@@ -343,6 +343,7 @@ class VirtualConsoleWidget(QFrame):
         self.game_state = game_state
         self.commands_path = commands_path
         self.dialogues_path = dialogues_path
+        self.sound_manager = None
 
         self.command_pools = self._load_commands_from_json()
         self.dialogue_data = self._load_dialogues_from_json()
@@ -405,6 +406,13 @@ class VirtualConsoleWidget(QFrame):
 
         self._update_session_header()
         self.start_boot_sequence()
+
+    def set_sound_manager(self, sound_manager):
+        self.sound_manager = sound_manager
+
+    def _play_sfx(self, key: str):
+        if self.sound_manager is not None:
+            self.sound_manager.play(key)
 
     @property
     def is_dialogue_mode(self) -> bool:
@@ -641,9 +649,12 @@ class VirtualConsoleWidget(QFrame):
             self.show_feedback("수확할 버퍼 잔량이 부족합니다.", is_error=True)
             return
 
+        was_synced = bool(res.get("was_synced"))
+        self._play_sfx("harvest_sync" if was_synced else "harvest")
+
         earned_str = format_number(res["earned"])
         mult = res["mult"]
-        sync_tag = " [SYNC BONUS x1.5]" if res.get("was_synced") else ""
+        sync_tag = " [SYNC BONUS x1.5]" if was_synced else ""
         self.append_log(
             f"[HARVEST] 버퍼 {res['fill_pct']}% 정산 (x{mult:.2f}{sync_tag})  ->  +{earned_str} Token",
             color="#3fb950",
@@ -655,6 +666,7 @@ class VirtualConsoleWidget(QFrame):
     def _on_supervisor_subsystem(self, key_char: str):
         res = self.game_state.resolve_subsystem_bottleneck(key_char)
         if res.get("ok"):
+            self._play_sfx("cooling_ok")
             gain_str = format_number(res["instant_gain"])
             mult_total = self.game_state.get_current_harvest_multiplier()
             self.append_log(
@@ -1069,6 +1081,7 @@ class VirtualConsoleWidget(QFrame):
             return
 
         self.typed_text += ch
+        self._play_sfx("key_tick")
         self._cursor_visible = True
         self.cursor_blink_timer.start(530)
         self._apply_prompt_border("#2ea043" if target.startswith(self.typed_text) else "#f85149")
@@ -1078,6 +1091,7 @@ class VirtualConsoleWidget(QFrame):
         if not self.typed_text:
             return
         self.typed_text = self.typed_text[:-1]
+        self._play_sfx("key_tick")
         self._cursor_visible = True
         self.cursor_blink_timer.start(530)
         self._apply_prompt_border("#2ea043" if self.current_target.startswith(self.typed_text) else "#f85149")
@@ -1096,6 +1110,7 @@ class VirtualConsoleWidget(QFrame):
             runtime_out = self.current_cmd_entry.get("output", "[RUNTIME] 명령어 실행 사이클 완료")
 
             self.game_state.complete_command()
+            self._play_sfx("cmd_done")
             self.append_log(f"> {target}   [+{format_number(earned)} Token]", color="#3fb950")
             self.append_log(f"  └ {runtime_out}", color="#8b949e")
 
@@ -1103,10 +1118,12 @@ class VirtualConsoleWidget(QFrame):
             self._apply_prompt_border("#2ea043")
             self._pick_next_command()
         else:
+            # 오타 제출 시에는 효과음 재생하지 않음
             self._apply_prompt_border("#f85149")
             self.show_feedback("오타가 있거나 명령어가 완성되지 않았습니다.", is_error=True)
 
     def on_cooldown_blocked(self, cooldown_ms: int):
+        self._play_sfx("cooldown_block")
         self._apply_prompt_border("#d29922")
         self.lbl_status.setText(f"[BUFFER BUSY] 입력 지연 제한 중 ({cooldown_ms}ms)")
         self.lbl_status.setStyleSheet("""
